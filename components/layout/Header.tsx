@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Download, Mic, MicOff, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckSquare, Download, Mic, MicOff, Settings as SettingsIcon, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -8,9 +8,10 @@ import { buildExport, downloadExport } from "@/lib/session";
 
 interface Props {
   onOpenSettings: () => void;
+  onFinishSession?: () => void;
 }
 
-export function Header({ onOpenSettings }: Props) {
+export function Header({ onOpenSettings, onFinishSession }: Props) {
   const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
   const resetSession = useSessionStore((s) => s.resetSession);
   const isRecording = useSessionStore((s) => s.isRecording);
@@ -77,6 +78,16 @@ export function Header({ onOpenSettings }: Props) {
         >
           {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
+        {onFinishSession && (
+          <button
+            onClick={onFinishSession}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-green-600 text-white hover:bg-green-700 sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
+            title="Finish session"
+          >
+            <CheckSquare className="h-4 w-4" />
+            <span className="hidden text-sm sm:inline">Finish</span>
+          </button>
+        )}
         <button
           onClick={handleReset}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"

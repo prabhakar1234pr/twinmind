@@ -11,6 +11,7 @@ import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useAutoSave, createDbSession } from "@/hooks/useAutoSave";
+import { FinishSessionOverlay } from "@/components/session/FinishSessionOverlay";
 
 export default function RecordPage() {
   const [dbSessionId, setDbSessionId] = useState<string | null>(null);
@@ -22,6 +23,7 @@ export default function RecordPage() {
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<AppTab>("suggestions");
   const [suggestionsBadge, setSuggestionsBadge] = useState(0);
@@ -96,7 +98,10 @@ export default function RecordPage() {
 
   return (
     <>
-      <Header onOpenSettings={() => setSettingsOpen(true)} />
+      <Header
+        onOpenSettings={() => setSettingsOpen(true)}
+        onFinishSession={dbSessionId ? () => setFinishing(true) : undefined}
+      />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Transcript */}
@@ -154,6 +159,13 @@ export default function RecordPage() {
       />
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {finishing && dbSessionId && (
+        <FinishSessionOverlay
+          dbSessionId={dbSessionId}
+          onCancel={() => setFinishing(false)}
+        />
+      )}
     </>
   );
 }
