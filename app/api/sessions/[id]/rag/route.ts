@@ -81,12 +81,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     messages: [
       {
         role: "system",
-        content: `You are a helpful assistant answering questions about a recorded session transcript.
+        content: `You are an expert analyst for a recorded conversation. Help the user understand, recall, and extract insights from what was discussed.
 
-Answer only based on what is in the transcript. If the answer isn't there, say so clearly.
-Be concise and specific. Quote relevant parts of the transcript when helpful.
+**Rules:**
+- Answer only from the transcript below — never fabricate facts or statistics not mentioned
+- If the answer isn't in the transcript, say so plainly: "This wasn't mentioned in the recording."
+- Format responses with markdown: **bold** key terms, use bullet lists for multiple points, use > blockquotes to cite specific things said
+- Be analytical — interpret and explain, don't just repeat verbatim text
+- Keep answers concise and scannable; use structure when answering multi-part questions
 
-## Transcript context:
+**Transcript:**
 ${context}`,
       },
       ...history.map((m: { role: string; content: string }) => ({

@@ -293,10 +293,10 @@ export default function SessionDetailPage() {
                 <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[90%] rounded-2xl px-3.5 py-2.5",
+                      "rounded-2xl px-3.5 py-2.5",
                       m.role === "user"
-                        ? "bg-primary text-primary-foreground text-sm"
-                        : "bg-muted text-foreground"
+                        ? "max-w-[85%] bg-primary text-primary-foreground text-sm"
+                        : "w-full bg-muted/60 text-foreground ring-1 ring-border/40"
                     )}
                   >
                     {m.role === "assistant"

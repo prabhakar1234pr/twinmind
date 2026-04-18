@@ -11,6 +11,7 @@ type Block =
   | { kind: "h1" | "h2" | "h3"; text: string }
   | { kind: "ul"; items: string[] }
   | { kind: "ol"; items: string[] }
+  | { kind: "blockquote"; text: string }
   | { kind: "p"; text: string }
   | { kind: "hr" };
 
@@ -43,6 +44,17 @@ function parseBlocks(raw: string): Block[] {
     if (/^[-*]{3,}$/.test(line.trim())) {
       blocks.push({ kind: "hr" });
       i++; continue;
+    }
+
+    // Blockquote
+    if (line.startsWith("> ") || line === ">") {
+      const lines2: string[] = [];
+      while (i < lines.length && (lines[i].startsWith("> ") || lines[i] === ">")) {
+        lines2.push(lines[i].replace(/^>\s?/, ""));
+        i++;
+      }
+      blocks.push({ kind: "blockquote", text: lines2.join(" ") });
+      continue;
     }
 
     // Unordered list
@@ -119,21 +131,27 @@ export function MarkdownContent({ content, streaming }: Props) {
 
         switch (block.kind) {
           case "h1":
-            return <h1 key={bi} className="text-base font-bold">{renderInline(block.text)}{cursor}</h1>;
+            return <h1 key={bi} className="mt-1 text-base font-bold leading-snug">{renderInline(block.text)}{cursor}</h1>;
           case "h2":
-            return <h2 key={bi} className="text-sm font-bold">{renderInline(block.text)}{cursor}</h2>;
+            return <h2 key={bi} className="mt-1 text-sm font-bold leading-snug">{renderInline(block.text)}{cursor}</h2>;
           case "h3":
-            return <h3 key={bi} className="text-sm font-semibold text-foreground/80">{renderInline(block.text)}{cursor}</h3>;
+            return <h3 key={bi} className="mt-0.5 text-sm font-semibold text-foreground/80 leading-snug">{renderInline(block.text)}{cursor}</h3>;
           case "hr":
             return <hr key={bi} className="border-current opacity-20" />;
+          case "blockquote":
+            return (
+              <blockquote key={bi} className="border-l-2 border-current pl-3 opacity-75 italic">
+                <span>{renderInline(block.text)}{cursor}</span>
+              </blockquote>
+            );
           case "ul":
             return (
-              <ul key={bi} className="space-y-1 pl-4">
+              <ul key={bi} className="space-y-1.5 pl-3">
                 {block.items.map((item, ii) => {
                   const itemIsLast = isLast && ii === block.items.length - 1;
                   return (
                     <li key={ii} className="flex gap-2">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
                       <span>{renderInline(item)}{itemIsLast && cursor}</span>
                     </li>
                   );
@@ -142,7 +160,7 @@ export function MarkdownContent({ content, streaming }: Props) {
             );
           case "ol":
             return (
-              <ol key={bi} className="space-y-1 pl-4">
+              <ol key={bi} className="space-y-1.5 pl-3">
                 {block.items.map((item, ii) => {
                   const itemIsLast = isLast && ii === block.items.length - 1;
                   return (
