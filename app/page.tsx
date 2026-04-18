@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Mic, Clock, ChevronRight, LogOut, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface Session {
   id: string;
@@ -19,6 +20,7 @@ export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [user, setUser] = useState<{ email?: string } | null>(null);
   const supabase = createClient();
 
@@ -45,9 +47,15 @@ export default function HomePage() {
     router.push("/auth");
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm("Delete this session? This cannot be undone.")) return;
+    setConfirmId(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!confirmId) return;
+    const id = confirmId;
+    setConfirmId(null);
     setDeletingId(id);
     await supabase.from("sessions").delete().eq("id", id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -142,7 +150,7 @@ export default function HomePage() {
                 </div>
                 <div className="mt-0.5 flex shrink-0 items-center gap-1">
                   <button
-                    onClick={(e) => handleDelete(e, s.id)}
+                    onClick={(e) => handleDeleteClick(e, s.id)}
                     disabled={deletingId === s.id}
                     className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
                     title="Delete session"
@@ -156,6 +164,17 @@ export default function HomePage() {
           </div>
         )}
       </main>
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title="Delete session?"
+        description="This will permanently remove the transcript, suggestions, chat history, and embeddings. This cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }
