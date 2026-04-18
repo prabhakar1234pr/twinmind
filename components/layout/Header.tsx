@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Mic, MicOff, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Mic, MicOff, Settings as SettingsIcon, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -44,6 +44,9 @@ export function Header({ onOpenSettings }: Props) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-3 sm:h-14 sm:px-4">
       <div className="flex items-center gap-2 sm:gap-3">
+        <a href="/" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="Back to sessions">
+          <ArrowLeft className="h-4 w-4" />
+        </a>
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold sm:h-8 sm:w-8 sm:text-sm">
           TM
         </div>

@@ -1,150 +1,141 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import { Header } from "@/components/layout/Header";
-import { MobileTabBar, type AppTab } from "@/components/layout/MobileTabBar";
-import { ChatPanel } from "@/components/chat/ChatPanel";
-import { SettingsModal } from "@/components/settings/SettingsModal";
-import { SuggestionsPanel } from "@/components/suggestions/SuggestionsPanel";
-import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
-import { useSessionStore } from "@/store/sessionStore";
-import { useSettingsStore } from "@/store/settingsStore";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Mic, Clock, ChevronRight, LogOut } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+
+interface Session {
+  id: string;
+  title: string;
+  created_at: string;
+  ended_at: string | null;
+  duration_sec: number;
+  summary: string | null;
+}
 
 export default function HomePage() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-  const [activeTab, setActiveTab] = useState<AppTab>("suggestions");
-  const [suggestionsBadge, setSuggestionsBadge] = useState(0);
-  const [chatBadge, setChatBadge] = useState(0);
-  const activeTabRef = useRef<AppTab>("suggestions");
+  const router = useRouter();
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<{ email?: string } | null>(null);
+  const supabase = createClient();
 
-  const handleTabChange = (tab: AppTab) => {
-    activeTabRef.current = tab;
-    setActiveTab(tab);
-    if (tab === "suggestions") setSuggestionsBadge(0);
-    if (tab === "chat") setChatBadge(0);
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user ?? null);
+      if (!user) { router.push("/auth"); return; }
+
+      const { data } = await supabase
+        .from("sessions")
+        .select("id, title, created_at, ended_at, duration_sec, summary")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      setSessions(data ?? []);
+      setLoading(false);
+    };
+    void load();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/auth");
   };
 
-  useEffect(() => {
-    setHydrated(true);
-    const hasKey = useSettingsStore.getState().apiKey.trim().length > 0;
-    if (!hasKey) setSettingsOpen(true);
-  }, []);
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-  // Auto-switch to chat when suggestion clicked; badge when on another tab
-  useEffect(() => {
-    let prevChatLen = useSessionStore.getState().chatMessages.length;
-    let prevBatchLen = useSessionStore.getState().suggestionBatches.length;
-
-    const unsub = useSessionStore.subscribe((state) => {
-      if (state.chatMessages.length > prevChatLen) {
-        prevChatLen = state.chatMessages.length;
-        const lastMsg = state.chatMessages[state.chatMessages.length - 1];
-        if (lastMsg?.role === "user" && activeTabRef.current !== "chat") {
-          handleTabChange("chat");
-        } else if (lastMsg?.role !== "user") {
-          setChatBadge((b) => b + 1);
-        }
-      }
-      if (state.suggestionBatches.length > prevBatchLen) {
-        prevBatchLen = state.suggestionBatches.length;
-        if (activeTabRef.current !== "suggestions") {
-          setSuggestionsBadge((b) => b + 3);
-        }
-      }
-    });
-
-    return unsub;
-  }, []);
-
-  // Warn on accidental tab close
-  useEffect(() => {
-    const beforeUnload = (e: BeforeUnloadEvent) => {
-      const s = useSessionStore.getState();
-      if (!s.transcriptChunks.length && !s.chatMessages.length && !s.suggestionBatches.length) return;
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", beforeUnload);
-    return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, []);
-
-  if (!hydrated) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading&hellip;
-      </div>
-    );
-  }
-
-  // All 3 panels are always mounted so recording/suggestion hooks keep running.
-  // Visibility is controlled purely by CSS at each breakpoint:
-  //
-  //  < sm  (< 640px)   : one panel visible at a time, driven by activeTab
-  //  sm–lg (640–1024px): Transcript hidden, Suggestions + Chat side-by-side
-  //  lg+   (≥ 1024px)  : full 3-column layout
+  const fmtDuration = (sec: number) => {
+    if (sec < 60) return `${sec}s`;
+    return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  };
 
   return (
-    <>
-      <Header onOpenSettings={() => setSettingsOpen(true)} />
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">TM</div>
+            <span className="font-semibold">TwinMind</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs text-muted-foreground sm:block">{user?.email}</span>
+            <button onClick={handleSignOut} className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted">
+              <LogOut className="h-3.5 w-3.5" /> Sign out
+            </button>
+          </div>
+        </div>
+      </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Transcript */}
-        <section
-          className={cn(
-            "flex-col bg-background",
-            // Mobile: visible only on transcript tab
-            activeTab === "transcript" ? "flex flex-1" : "hidden",
-            // sm–lg: always hidden (hooks still run; mic button moved to header)
-            "sm:hidden",
-            // lg+: left column
-            "lg:flex lg:flex-none lg:basis-[28%] lg:border-r lg:border-border"
-          )}
+      <main className="mx-auto max-w-4xl px-4 py-8">
+        {/* Start new session CTA */}
+        <button
+          onClick={() => router.push("/record")}
+          className="mb-8 flex w-full items-center gap-4 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-5 text-left transition-colors hover:border-primary/60 hover:bg-primary/10"
         >
-          <TranscriptPanel onNeedApiKey={() => setSettingsOpen(true)} />
-        </section>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Plus className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="font-semibold">New Session</p>
+            <p className="text-sm text-muted-foreground">Start recording and get live AI suggestions</p>
+          </div>
+          <ChevronRight className="ml-auto h-5 w-5 text-muted-foreground" />
+        </button>
 
-        {/* Suggestions */}
-        <section
-          className={cn(
-            "flex-col bg-muted/30",
-            // Mobile: visible only on suggestions tab
-            activeTab === "suggestions" ? "flex flex-1" : "hidden",
-            // sm–lg: always visible, takes half the space
-            "sm:flex sm:flex-1 sm:border-r sm:border-border",
-            // lg+: middle column
-            "lg:flex-none lg:basis-[44%]"
-          )}
-        >
-          <SuggestionsPanel />
-        </section>
+        {/* Session list */}
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Past Sessions
+        </h2>
 
-        {/* Chat */}
-        <section
-          className={cn(
-            "flex-col bg-background",
-            // Mobile: visible only on chat tab
-            activeTab === "chat" ? "flex flex-1" : "hidden",
-            // sm–lg: always visible, takes half the space
-            "sm:flex sm:flex-1",
-            // lg+: right column
-            "lg:flex-none lg:basis-[28%]"
-          )}
-        >
-          <ChatPanel />
-        </section>
-      </div>
-
-      {/* Tab bar: phone only (hidden at sm+) */}
-      <MobileTabBar
-        active={activeTab}
-        onChange={handleTabChange}
-        suggestionsBadge={suggestionsBadge}
-        chatBadge={chatBadge}
-      />
-
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </>
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 animate-pulse rounded-xl bg-muted" />
+            ))}
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="rounded-xl border border-border py-12 text-center">
+            <Mic className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No sessions yet. Start your first one above.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sessions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => router.push(`/sessions/${s.id}`)}
+                className="flex w-full items-start gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-sm"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Mic className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate font-medium">{s.title}</p>
+                    <span className="shrink-0 text-xs text-muted-foreground">{fmt(s.created_at)}</span>
+                  </div>
+                  {s.summary ? (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{s.summary}</p>
+                  ) : (
+                    <p className="mt-0.5 text-xs text-muted-foreground/50 italic">No summary yet</p>
+                  )}
+                  {s.duration_sec > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      {fmtDuration(s.duration_sec)}
+                    </div>
+                  )}
+                </div>
+                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
