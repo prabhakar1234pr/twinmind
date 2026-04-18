@@ -1,0 +1,14 @@
+node_modules
+.next
+.vercel
+.env*.local
+*.log
+.DS_Store
+next-env.d.ts
+*.tsbuildinfo
+.claude/
+
+# Internal — not part of the submission
+docs/
+TwinMind - Live Suggestions Assignment*.pdf
+
