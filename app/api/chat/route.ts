@@ -4,6 +4,7 @@ import { fillTemplate } from "@/lib/prompts";
 import type { ChatApiRequest } from "@/types";
 
 export const runtime = "edge";
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
       model: chatModel,
       stream: true,
       temperature: 0.6,
-      max_tokens: 1200,
+      max_tokens: 800,
       messages: [
         { role: "system", content: renderedSystem },
         ...messages.map((m) => ({ role: m.role, content: m.content })),

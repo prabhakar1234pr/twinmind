@@ -8,7 +8,8 @@ import type {
 } from "@/types";
 import { SUGGESTION_TYPES } from "@/types";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 60; // seconds — Node allows up to 60s on Hobby
 
 function renderPreviousSuggestions(prev: Suggestion[]): string {
   if (!prev || prev.length === 0) return "(none yet)";
@@ -93,7 +94,7 @@ async function callGroq(
     // No response_format — it causes json_validate_failed on some Groq-hosted models.
     // We extract JSON from the raw text ourselves via extractJson().
     temperature: 0.4,
-    max_tokens: 1400,
+    max_tokens: 500,
     messages: [
       {
         role: "system",
