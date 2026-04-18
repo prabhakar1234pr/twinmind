@@ -5,8 +5,10 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
   const apiKey = getApiKeyFromRequest(req);
   if (!apiKey) {
+    console.error("[transcribe] missing API key");
     return apiError(401, "Missing or invalid Groq API key.");
   }
 
@@ -14,6 +16,7 @@ export async function POST(req: NextRequest) {
   try {
     form = await req.formData();
   } catch {
+    console.error("[transcribe] failed to parse form data");
     return apiError(400, "Expected multipart/form-data.");
   }
 
@@ -21,9 +24,11 @@ export async function POST(req: NextRequest) {
   const model = (form.get("model") as string) || "whisper-large-v3";
 
   if (!(file instanceof Blob) || file.size === 0) {
+    console.error("[transcribe] missing or empty audio blob");
     return apiError(422, "No audio blob in 'audio' field.");
   }
 
+  console.log(`[transcribe] model=${model} size=${file.size}b type=${file.type}`);
   const groq = createGroqClient(apiKey);
 
   try {
@@ -43,12 +48,14 @@ export async function POST(req: NextRequest) {
     });
 
     const text = (result?.text ?? "").trim();
+    console.log(`[transcribe] ok words=${text.split(" ").length} ms=${Date.now() - t0}`);
     return new Response(JSON.stringify({ text }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Transcription failed.";
+    console.error(`[transcribe] error ms=${Date.now() - t0}`, msg);
     return apiError(500, msg);
   }
 }

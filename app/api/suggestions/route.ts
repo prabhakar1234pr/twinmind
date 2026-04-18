@@ -18,6 +18,33 @@ function renderPreviousSuggestions(prev: Suggestion[]): string {
     .join("\n");
 }
 
+const TYPE_ALIASES: Record<string, (typeof SUGGESTION_TYPES)[number]> = {
+  QUESTION: "QUESTION_TO_ASK",
+  QUESTION_TO_ASK: "QUESTION_TO_ASK",
+  TALKING_POINT: "TALKING_POINT",
+  "TALKING-POINT": "TALKING_POINT",
+  TALKINGPOINT: "TALKING_POINT",
+  TALKING: "TALKING_POINT",
+  FACT_CHECK: "FACT_CHECK",
+  "FACT-CHECK": "FACT_CHECK",
+  FACTCHECK: "FACT_CHECK",
+  FACT: "FACT_CHECK",
+  DIRECT_ANSWER: "DIRECT_ANSWER",
+  "DIRECT-ANSWER": "DIRECT_ANSWER",
+  DIRECTANSWER: "DIRECT_ANSWER",
+  ANSWER: "DIRECT_ANSWER",
+  CLARIFYING_INFO: "CLARIFYING_INFO",
+  "CLARIFYING-INFO": "CLARIFYING_INFO",
+  CLARIFYINGINFO: "CLARIFYING_INFO",
+  CLARIFYING: "CLARIFYING_INFO",
+  CLARIFICATION: "CLARIFYING_INFO",
+};
+
+function normalizeType(raw: string): (typeof SUGGESTION_TYPES)[number] | null {
+  const key = raw.trim().toUpperCase().replace(/\s+/g, "_");
+  return TYPE_ALIASES[key] ?? null;
+}
+
 function validate(obj: unknown): SuggestionsApiResponse | null {
   if (!obj || typeof obj !== "object") return null;
   const maybe = obj as { suggestions?: unknown };
@@ -26,18 +53,13 @@ function validate(obj: unknown): SuggestionsApiResponse | null {
     .map((raw) => {
       if (!raw || typeof raw !== "object") return null;
       const s = raw as Record<string, unknown>;
-      const type = typeof s.type === "string" ? s.type : "";
+      const rawType = typeof s.type === "string" ? s.type : "";
+      const type = normalizeType(rawType);
       const preview = typeof s.preview === "string" ? s.preview : "";
       const fullContext =
         typeof s.fullContext === "string" ? s.fullContext : "";
-      if (!SUGGESTION_TYPES.includes(type as (typeof SUGGESTION_TYPES)[number]))
-        return null;
-      if (!preview || !fullContext) return null;
-      return {
-        type: type as (typeof SUGGESTION_TYPES)[number],
-        preview,
-        fullContext,
-      };
+      if (!type || !preview || !fullContext) return null;
+      return { type, preview, fullContext };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
   if (cleaned.length < 3) return null;
@@ -116,6 +138,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!validated) {
+      console.error("[suggestions] validation failed. raw output:", raw);
       return apiError(
         502,
         "Model returned invalid suggestions JSON after retry."
