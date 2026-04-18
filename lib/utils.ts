@@ -20,9 +20,17 @@ export function formatRelative(ms: number, nowMs: number = Date.now()): string {
   return `${hours}h ago`;
 }
 
-export function uid(prefix = ""): string {
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `${prefix}${Date.now().toString(36)}-${rand}`;
+export function uid(_prefix = ""): string {
+  // Always generate a proper UUID so IDs are valid for Supabase upserts.
+  // The prefix param is kept for backwards compatibility but ignored.
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for environments without crypto.randomUUID
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 export function truncate(text: string, max: number): string {

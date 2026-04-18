@@ -6,6 +6,7 @@ import { ArrowLeft, Sparkles, FileText, StickyNote, Send, Loader2, RotateCcw } f
 import { createClient } from "@/lib/supabase/client";
 import { MarkdownContent } from "@/components/chat/MarkdownContent";
 import { cn } from "@/lib/utils";
+import { useSettingsStore } from "@/store/settingsStore";
 
 type Tab = "summary" | "transcript" | "notes";
 
@@ -25,6 +26,7 @@ export default function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const supabase = createClient();
+  const apiKey = useSettingsStore((s) => s.apiKey);
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
@@ -71,9 +73,18 @@ export default function SessionDetailPage() {
     }, 800);
   };
 
+  const groqHeaders = {
+    "content-type": "application/json",
+    "x-groq-api-key": apiKey,
+  };
+
   const generateSummary = async () => {
+    if (!apiKey) { alert("Add your Groq API key in Settings first."); return; }
     setSummaryLoading(true);
-    const res = await fetch(`/api/sessions/${id}/summary`, { method: "POST" });
+    const res = await fetch(`/api/sessions/${id}/summary`, {
+      method: "POST",
+      headers: groqHeaders,
+    });
     if (res.ok) {
       const { summary } = await res.json();
       setSession((s) => s ? { ...s, summary } : s);
@@ -82,8 +93,9 @@ export default function SessionDetailPage() {
   };
 
   const generateEmbeddings = async () => {
+    if (!apiKey) return;
     setEmbedLoading(true);
-    await fetch(`/api/sessions/${id}/embed`, { method: "POST" });
+    await fetch(`/api/sessions/${id}/embed`, { method: "POST", headers: groqHeaders });
     setEmbedLoading(false);
   };
 
@@ -97,7 +109,7 @@ export default function SessionDetailPage() {
 
     const res = await fetch(`/api/sessions/${id}/rag`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: groqHeaders,
       body: JSON.stringify({ question: q, history: newMessages.slice(-6) }),
     });
 
