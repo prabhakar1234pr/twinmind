@@ -23,10 +23,13 @@ export default function AuthPage() {
       if (error) setError(error.message);
       else window.location.href = "/";
     } else {
+      // Use NEXT_PUBLIC_SITE_URL in production so email links point to Vercel,
+      // not localhost. Falls back to current origin for local dev.
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? location.origin;
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${location.origin}/auth/callback` },
+        options: { emailRedirectTo: `${siteUrl}/auth/callback` },
       });
       if (error) setError(error.message);
       else setMessage("Check your email to confirm your account.");
