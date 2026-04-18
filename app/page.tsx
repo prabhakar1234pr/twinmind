@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Mic, Clock, ChevronRight, LogOut } from "lucide-react";
+import { Plus, Mic, Clock, ChevronRight, LogOut, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Session {
@@ -18,6 +18,7 @@ export default function HomePage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [user, setUser] = useState<{ email?: string } | null>(null);
   const supabase = createClient();
 
@@ -42,6 +43,15 @@ export default function HomePage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push("/auth");
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm("Delete this session? This cannot be undone.")) return;
+    setDeletingId(id);
+    await supabase.from("sessions").delete().eq("id", id);
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    setDeletingId(null);
   };
 
   const fmt = (iso: string) =>
@@ -108,7 +118,7 @@ export default function HomePage() {
               <button
                 key={s.id}
                 onClick={() => router.push(`/sessions/${s.id}`)}
-                className="flex w-full items-start gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-sm"
+                className="group flex w-full items-start gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-sm"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
                   <Mic className="h-4 w-4 text-muted-foreground" />
@@ -130,7 +140,17 @@ export default function HomePage() {
                     </div>
                   )}
                 </div>
-                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="mt-0.5 flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={(e) => handleDelete(e, s.id)}
+                    disabled={deletingId === s.id}
+                    className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
+                    title="Delete session"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
               </button>
             ))}
           </div>
