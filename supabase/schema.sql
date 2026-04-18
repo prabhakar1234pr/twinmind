@@ -53,13 +53,13 @@ create table if not exists public.chat_messages (
   linked_suggestion_id uuid references public.suggestions
 );
 
--- Vector embeddings for RAG (768-dim for nomic-embed-text-v1_5 via Groq)
+-- Vector embeddings for RAG (384-dim via Supabase gte-small Edge Function)
 create table if not exists public.transcript_embeddings (
   id         uuid primary key default gen_random_uuid(),
   session_id uuid references public.sessions on delete cascade not null,
   chunk_id   uuid references public.transcript_chunks on delete cascade not null,
   content    text not null,
-  embedding  vector(768)
+  embedding  vector(384)
 );
 
 -- Indexes
@@ -90,7 +90,7 @@ create policy "own embeddings"     on public.transcript_embeddings for all using
 
 -- Match function for RAG similarity search
 create or replace function match_transcript_chunks(
-  query_embedding vector(768),
+  query_embedding vector(384),
   match_session_id uuid,
   match_count int default 5
 ) returns table (

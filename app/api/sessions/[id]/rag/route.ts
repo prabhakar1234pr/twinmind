@@ -8,19 +8,18 @@ type Params = { params: Promise<{ id: string }> };
 
 export const runtime = "nodejs";
 
-async function getEmbedding(text: string, apiKey: string): Promise<number[] | null> {
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+async function getEmbedding(text: string): Promise<number[] | null> {
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/embeddings", {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/embed-text`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: "nomic-embed-text-v1_5", input: text }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: text }),
     });
     if (!res.ok) return null;
     const json = await res.json();
-    return json.data[0].embedding;
+    return json.embedding as number[];
   } catch {
     return null;
   }
@@ -43,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Try vector search first; fall back to full-text if no embeddings exist
   let contextChunks: string[] = [];
 
-  const queryEmbedding = await getEmbedding(question, apiKey);
+  const queryEmbedding = await getEmbedding(question);
   if (queryEmbedding) {
     const { data: matches } = await serviceClient.rpc("match_transcript_chunks", {
       query_embedding: queryEmbedding,

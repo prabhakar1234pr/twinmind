@@ -4,27 +4,24 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 type Params = { params: Promise<{ id: string }> };
 
-// Node runtime required for @xenova/transformers
 export const runtime = "nodejs";
 
-async function getEmbedding(text: string, apiKey: string): Promise<number[]> {
-  // Use Groq embeddings API (nomic-embed-text-v1_5, 768-dim)
-  const res = await fetch("https://api.groq.com/openai/v1/embeddings", {
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+async function getEmbedding(text: string): Promise<number[]> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/embed-text`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model: "nomic-embed-text-v1_5", input: text }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ input: text }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Groq embeddings error: ${err}`);
+    throw new Error(`embed-text function error: ${err}`);
   }
 
   const json = await res.json();
-  return json.data[0].embedding as number[];
+  return json.embedding as number[];
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -32,9 +29,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const apiKey = req.headers.get("x-groq-api-key") ?? "";
-  if (!apiKey) return NextResponse.json({ error: "Missing Groq API key" }, { status: 401 });
 
   const { data: chunks } = await supabase
     .from("transcript_chunks")
@@ -49,7 +43,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   for (const chunk of chunks) {
     if (!chunk.text.trim()) continue;
     try {
-      const embedding = await getEmbedding(chunk.text, apiKey);
+      const embedding = await getEmbedding(chunk.text);
       await serviceClient.from("transcript_embeddings").upsert({
         session_id: id,
         chunk_id: chunk.id,
