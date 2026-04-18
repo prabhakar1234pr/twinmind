@@ -39,46 +39,47 @@ export function Header({ onOpenSettings }: Props) {
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-3 sm:h-14 sm:px-4">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold sm:h-8 sm:w-8 sm:text-sm">
           TM
         </div>
-        <div className="flex flex-col leading-tight">
+        <div className="hidden flex-col leading-tight sm:flex">
           <span className="text-sm font-semibold">TwinMind</span>
           <span className="text-xs text-muted-foreground">Live Suggestions</span>
         </div>
+        <span className="text-sm font-semibold sm:hidden">TwinMind</span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2">
         {!hasApiKey && (
-          <span className="text-xs text-amber-600 dark:text-amber-400 mr-2">
+          <span className="hidden text-xs text-amber-600 dark:text-amber-400 sm:inline sm:mr-1">
             API key required
           </span>
         )}
         <button
           onClick={handleReset}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
           title="Clear session"
         >
           <Trash2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Clear</span>
+          <span className="hidden text-sm sm:inline">Clear</span>
         </button>
         <button
           onClick={handleExport}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm hover:bg-muted"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background hover:bg-muted sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
           title="Export session JSON"
         >
           <Download className="h-4 w-4" />
-          <span>Export</span>
+          <span className="hidden text-sm sm:inline">Export</span>
         </button>
         <button
           onClick={onOpenSettings}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm text-primary-foreground hover:opacity-90"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
           title="Settings"
         >
           <SettingsIcon className="h-4 w-4" />
-          <span>Settings</span>
+          <span className="hidden text-sm sm:inline">Settings</span>
         </button>
       </div>
     </header>
