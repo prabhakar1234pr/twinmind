@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { Download, Mic, MicOff, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { buildExport, downloadExport } from "@/lib/session";
@@ -12,6 +13,8 @@ interface Props {
 export function Header({ onOpenSettings }: Props) {
   const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
   const resetSession = useSessionStore((s) => s.resetSession);
+  const isRecording = useSessionStore((s) => s.isRecording);
+  const requestRecordingToggle = useSessionStore((s) => s.requestRecordingToggle);
 
   const handleExport = () => {
     const { sessionId, startedAt, transcriptChunks, suggestionBatches, chatMessages } =
@@ -57,6 +60,20 @@ export function Header({ onOpenSettings }: Props) {
             API key required
           </span>
         )}
+        {/* Mic button: only visible on sm–lg (transcript panel is hidden there) */}
+        <button
+          onClick={requestRecordingToggle}
+          className={cn(
+            "hidden sm:inline-flex lg:hidden",
+            "h-8 w-8 items-center justify-center rounded-md transition-colors",
+            isRecording
+              ? "bg-red-500 text-white animate-pulse"
+              : "border border-border bg-background text-muted-foreground hover:bg-muted"
+          )}
+          title={isRecording ? "Stop recording" : "Start recording"}
+        >
+          {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </button>
         <button
           onClick={handleReset}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"

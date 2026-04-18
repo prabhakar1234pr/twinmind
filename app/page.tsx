@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/Header";
 import { MobileTabBar, type AppTab } from "@/components/layout/MobileTabBar";
-import { ThreeColumnLayout } from "@/components/layout/ThreeColumnLayout";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SettingsModal } from "@/components/settings/SettingsModal";
 import { SuggestionsPanel } from "@/components/suggestions/SuggestionsPanel";
 import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { cn } from "@/lib/utils";
 
 export default function HomePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -33,28 +32,21 @@ export default function HomePage() {
     if (!hasKey) setSettingsOpen(true);
   }, []);
 
-  // Auto-switch to chat when a suggestion is clicked (new user message added)
-  // Show badge when on a different tab
+  // Auto-switch to chat when suggestion clicked; badge when on another tab
   useEffect(() => {
     let prevChatLen = useSessionStore.getState().chatMessages.length;
     let prevBatchLen = useSessionStore.getState().suggestionBatches.length;
 
     const unsub = useSessionStore.subscribe((state) => {
-      // New chat message → switch to chat or badge
       if (state.chatMessages.length > prevChatLen) {
         prevChatLen = state.chatMessages.length;
-        if (activeTabRef.current !== "chat") {
-          // Only auto-switch if it's a user message (suggestion was clicked)
-          const lastMsg = state.chatMessages[state.chatMessages.length - 1];
-          if (lastMsg?.role === "user") {
-            handleTabChange("chat");
-          } else {
-            setChatBadge((b) => b + 1);
-          }
+        const lastMsg = state.chatMessages[state.chatMessages.length - 1];
+        if (lastMsg?.role === "user" && activeTabRef.current !== "chat") {
+          handleTabChange("chat");
+        } else if (lastMsg?.role !== "user") {
+          setChatBadge((b) => b + 1);
         }
       }
-
-      // New suggestion batch → badge if not on suggestions tab
       if (state.suggestionBatches.length > prevBatchLen) {
         prevBatchLen = state.suggestionBatches.length;
         if (activeTabRef.current !== "suggestions") {
@@ -66,15 +58,11 @@ export default function HomePage() {
     return unsub;
   }, []);
 
-  // Warn on tab close if session has unsaved data
+  // Warn on accidental tab close
   useEffect(() => {
     const beforeUnload = (e: BeforeUnloadEvent) => {
       const s = useSessionStore.getState();
-      if (
-        s.transcriptChunks.length === 0 &&
-        s.chatMessages.length === 0 &&
-        s.suggestionBatches.length === 0
-      ) return;
+      if (!s.transcriptChunks.length && !s.chatMessages.length && !s.suggestionBatches.length) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -90,62 +78,71 @@ export default function HomePage() {
     );
   }
 
-  const transcriptPanel = (
-    <TranscriptPanel onNeedApiKey={() => setSettingsOpen(true)} />
-  );
-  const suggestionsPanel = <SuggestionsPanel />;
-  const chatPanel = <ChatPanel />;
+  // All 3 panels are always mounted so recording/suggestion hooks keep running.
+  // Visibility is controlled purely by CSS at each breakpoint:
+  //
+  //  < sm  (< 640px)   : one panel visible at a time, driven by activeTab
+  //  sm–lg (640–1024px): Transcript hidden, Suggestions + Chat side-by-side
+  //  lg+   (≥ 1024px)  : full 3-column layout
 
   return (
     <>
       <Header onOpenSettings={() => setSettingsOpen(true)} />
 
-      {/* ── Desktop: 3-column ── */}
-      <div className="hidden min-h-0 flex-1 lg:flex">
-        <ThreeColumnLayout
-          left={transcriptPanel}
-          middle={suggestionsPanel}
-          right={chatPanel}
-        />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Transcript */}
+        <section
+          className={cn(
+            "flex-col bg-background",
+            // Mobile: visible only on transcript tab
+            activeTab === "transcript" ? "flex flex-1" : "hidden",
+            // sm–lg: always hidden (hooks still run; mic button moved to header)
+            "sm:hidden",
+            // lg+: left column
+            "lg:flex lg:flex-none lg:basis-[28%] lg:border-r lg:border-border"
+          )}
+        >
+          <TranscriptPanel onNeedApiKey={() => setSettingsOpen(true)} />
+        </section>
+
+        {/* Suggestions */}
+        <section
+          className={cn(
+            "flex-col bg-muted/30",
+            // Mobile: visible only on suggestions tab
+            activeTab === "suggestions" ? "flex flex-1" : "hidden",
+            // sm–lg: always visible, takes half the space
+            "sm:flex sm:flex-1 sm:border-r sm:border-border",
+            // lg+: middle column
+            "lg:flex-none lg:basis-[44%]"
+          )}
+        >
+          <SuggestionsPanel />
+        </section>
+
+        {/* Chat */}
+        <section
+          className={cn(
+            "flex-col bg-background",
+            // Mobile: visible only on chat tab
+            activeTab === "chat" ? "flex flex-1" : "hidden",
+            // sm–lg: always visible, takes half the space
+            "sm:flex sm:flex-1",
+            // lg+: right column
+            "lg:flex-none lg:basis-[28%]"
+          )}
+        >
+          <ChatPanel />
+        </section>
       </div>
 
-      {/* ── Mobile / narrow: single panel + tab bar ── */}
-      {/* All 3 panels are always in the DOM so recording/suggestion hooks stay alive */}
-      <div className="flex min-h-0 flex-1 flex-col lg:hidden">
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <div
-            className={cn(
-              "h-full flex-col",
-              activeTab === "transcript" ? "flex" : "hidden"
-            )}
-          >
-            {transcriptPanel}
-          </div>
-          <div
-            className={cn(
-              "h-full flex-col",
-              activeTab === "suggestions" ? "flex" : "hidden"
-            )}
-          >
-            {suggestionsPanel}
-          </div>
-          <div
-            className={cn(
-              "h-full flex-col",
-              activeTab === "chat" ? "flex" : "hidden"
-            )}
-          >
-            {chatPanel}
-          </div>
-        </div>
-
-        <MobileTabBar
-          active={activeTab}
-          onChange={handleTabChange}
-          suggestionsBadge={suggestionsBadge}
-          chatBadge={chatBadge}
-        />
-      </div>
+      {/* Tab bar: phone only (hidden at sm+) */}
+      <MobileTabBar
+        active={activeTab}
+        onChange={handleTabChange}
+        suggestionsBadge={suggestionsBadge}
+        chatBadge={chatBadge}
+      />
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>

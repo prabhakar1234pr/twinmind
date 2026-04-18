@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { MicButton } from "./MicButton";
 import { TranscriptEntry } from "./TranscriptEntry";
 
+
 interface Props {
   onNeedApiKey: () => void;
 }
@@ -29,6 +30,18 @@ export function TranscriptPanel({ onNeedApiKey }: Props) {
     chunkIntervalMs: 30_000,
   });
 
+  const toggle = useCallback(async () => {
+    if (isRecording) { stop(); return; }
+    if (!hasApiKey) { onNeedApiKey(); return; }
+    await start();
+  }, [isRecording, stop, hasApiKey, onNeedApiKey, start]);
+
+  // Sync recording state to store so header mic button can read it
+  const setIsRecordingStore = useSessionStore((s) => s.setIsRecording);
+  useEffect(() => {
+    setIsRecordingStore(isRecording);
+  }, [isRecording, setIsRecordingStore]);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -36,17 +49,15 @@ export function TranscriptPanel({ onNeedApiKey }: Props) {
     el.scrollTop = el.scrollHeight;
   }, [chunks.length]);
 
-  const toggle = async () => {
-    if (isRecording) {
-      stop();
-      return;
+  // Respond to external toggle requests from header mic button on narrow screens
+  const toggleSeq = useSessionStore((s) => s.recordingToggleSeq);
+  const prevSeqRef = useRef(toggleSeq);
+  useEffect(() => {
+    if (toggleSeq !== prevSeqRef.current) {
+      prevSeqRef.current = toggleSeq;
+      void toggle();
     }
-    if (!hasApiKey) {
-      onNeedApiKey();
-      return;
-    }
-    await start();
-  };
+  }, [toggleSeq, toggle]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

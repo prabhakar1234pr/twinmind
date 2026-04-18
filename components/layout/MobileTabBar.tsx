@@ -26,7 +26,7 @@ export function MobileTabBar({ active, onChange, suggestionsBadge, chatBadge }: 
   };
 
   return (
-    <nav className="flex shrink-0 border-t border-border bg-background lg:hidden">
+    <nav className="flex shrink-0 border-t border-border bg-background sm:hidden">
       {TABS.map(({ id, label, Icon }) => {
         const count = badge(id);
         const isActive = active === id;

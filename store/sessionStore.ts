@@ -39,6 +39,12 @@ interface SessionStore {
   isChatStreaming: boolean;
   setChatStreaming: (v: boolean) => void;
 
+  // Recording state exposed so header mic button can read/control it
+  isRecording: boolean;
+  setIsRecording: (v: boolean) => void;
+  recordingToggleSeq: number;
+  requestRecordingToggle: () => void;
+
   resetSession: () => void;
 }
 
@@ -87,6 +93,12 @@ export const useSessionStore = create<SessionStore>((set) => ({
   isChatStreaming: false,
   setChatStreaming: (v) => set({ isChatStreaming: v }),
 
+  isRecording: false,
+  setIsRecording: (v) => set({ isRecording: v }),
+  recordingToggleSeq: 0,
+  requestRecordingToggle: () =>
+    set((s) => ({ recordingToggleSeq: s.recordingToggleSeq + 1 })),
+
   resetSession: () =>
     set({
       sessionId: uid("sess-"),
@@ -100,5 +112,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
       isChatStreaming: false,
       prefetchedAnswers: {},
       prefetchingIds: [],
+      isRecording: false,
+      recordingToggleSeq: 0,
     }),
 }));
