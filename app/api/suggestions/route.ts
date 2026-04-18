@@ -66,6 +66,17 @@ function validate(obj: unknown): SuggestionsApiResponse | null {
   return { suggestions: cleaned.slice(0, 3) };
 }
 
+function extractJson(raw: string): string {
+  // Strip markdown code fences if present
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return fenced[1].trim();
+  // Find outermost { ... } in the response
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start !== -1 && end > start) return raw.slice(start, end + 1);
+  return raw.trim();
+}
+
 async function callGroq(
   apiKey: string,
   model: string,
@@ -79,20 +90,22 @@ async function callGroq(
 
   const completion = await groq.chat.completions.create({
     model,
-    response_format: { type: "json_object" },
+    // No response_format — it causes json_validate_failed on some Groq-hosted models.
+    // We extract JSON from the raw text ourselves via extractJson().
     temperature: 0.4,
     max_tokens: 1400,
     messages: [
       {
         role: "system",
         content:
-          "You are a precise JSON-producing assistant. Always return valid JSON matching the requested schema.",
+          "You are a precise JSON-producing assistant. Always return valid JSON matching the requested schema. Output ONLY the JSON object, nothing else.",
       },
       { role: "user", content: stricterPrefix + prompt },
     ],
   });
 
-  return completion.choices[0]?.message?.content ?? "";
+  const content = completion.choices[0]?.message?.content ?? "";
+  return extractJson(content);
 }
 
 export async function POST(req: NextRequest) {
