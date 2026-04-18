@@ -7,11 +7,13 @@ import { SuggestionCard } from "./SuggestionCard";
 interface Props {
   batch: Batch;
   activeSuggestionId: string | null;
+  prefetchedIds: string[];
+  prefetchingIds: string[];
   onSelect: (s: Suggestion) => void;
   isNewest: boolean;
 }
 
-export function SuggestionBatch({ batch, activeSuggestionId, onSelect, isNewest }: Props) {
+export function SuggestionBatch({ batch, activeSuggestionId, prefetchedIds, prefetchingIds, onSelect, isNewest }: Props) {
   return (
     <div className="mb-5">
       <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -28,6 +30,8 @@ export function SuggestionBatch({ batch, activeSuggestionId, onSelect, isNewest 
             key={s.id}
             suggestion={s}
             isActive={s.id === activeSuggestionId}
+            isPrefetching={prefetchingIds.includes(s.id)}
+            isPrefetched={prefetchedIds.includes(s.id)}
             onClick={() => onSelect(s)}
           />
         ))}

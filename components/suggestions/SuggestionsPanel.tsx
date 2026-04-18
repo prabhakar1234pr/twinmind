@@ -2,13 +2,18 @@
 
 import { RefreshCw } from "lucide-react";
 import { useSuggestions } from "@/hooks/useSuggestions";
+import { usePrefetch } from "@/hooks/usePrefetch";
 import { useChat } from "@/hooks/useChat";
 import { fillTemplate } from "@/lib/prompts";
+import { uid } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { Suggestion } from "@/types";
 import { SuggestionBatch } from "./SuggestionBatch";
+
+const REPLAY_CHUNK = 24;  // chars per tick during fast-replay
+const REPLAY_DELAY = 8;   // ms between ticks — fast but visibly streaming
 
 export function SuggestionsPanel() {
   const batches = useSessionStore((s) => s.suggestionBatches);
@@ -16,16 +21,69 @@ export function SuggestionsPanel() {
   const error = useSessionStore((s) => s.suggestionError);
   const activeSuggestion = useSessionStore((s) => s.activeSuggestion);
   const setActiveSuggestion = useSessionStore((s) => s.setActiveSuggestion);
+  const prefetchedAnswers = useSessionStore((s) => s.prefetchedAnswers);
+  const prefetchingIds = useSessionStore((s) => s.prefetchingIds);
   const expansionPrompt = useSettingsStore((s) => s.expansionPrompt);
 
   const { refreshNow } = useSuggestions();
   const { send } = useChat();
 
+  // Start background prefetch whenever a new batch lands
+  usePrefetch();
+
   const handleSelect = async (s: Suggestion) => {
     setActiveSuggestion(s);
+
     const content = fillTemplate(expansionPrompt, {
       suggestionFullContext: s.fullContext,
     });
+
+    const cached = prefetchedAnswers[s.id];
+    if (cached) {
+      // Fast-replay: inject user message + stream cached text char-by-char
+      const {
+        addChatMessage,
+        appendToMessage,
+        finalizeMessage,
+        setChatStreaming,
+      } = useSessionStore.getState();
+
+      const userMsgId = uid("m-");
+      addChatMessage({
+        id: userMsgId,
+        role: "user",
+        content,
+        timestamp: Date.now(),
+        linkedSuggestionId: s.id,
+      });
+
+      const assistantId = uid("m-");
+      addChatMessage({
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: Date.now(),
+        streaming: true,
+      });
+      setChatStreaming(true);
+
+      // Stream cached text in chunks to look like fast streaming
+      let offset = 0;
+      const replay = () => {
+        if (offset >= cached.length) {
+          finalizeMessage(assistantId);
+          setChatStreaming(false);
+          return;
+        }
+        appendToMessage(assistantId, cached.slice(offset, offset + REPLAY_CHUNK));
+        offset += REPLAY_CHUNK;
+        setTimeout(replay, REPLAY_DELAY);
+      };
+      setTimeout(replay, REPLAY_DELAY);
+      return;
+    }
+
+    // Cache miss (prefetch still in-flight or failed) → live streaming fallback
     await send({ content, linkedSuggestionId: s.id });
   };
 
@@ -71,6 +129,8 @@ export function SuggestionsPanel() {
               key={batch.id}
               batch={batch}
               activeSuggestionId={activeSuggestion?.id ?? null}
+              prefetchedIds={Object.keys(prefetchedAnswers)}
+              prefetchingIds={prefetchingIds}
               onSelect={handleSelect}
               isNewest={idx === 0}
             />
