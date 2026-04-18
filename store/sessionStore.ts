@@ -23,13 +23,6 @@ interface SessionStore {
   suggestionError: string | null;
   setSuggestionError: (msg: string | null) => void;
 
-  // Prefetch cache: suggestion ID → full answer text (empty string = still loading)
-  prefetchedAnswers: Record<string, string>;
-  prefetchingIds: string[];
-  setPrefetchedAnswer: (id: string, content: string) => void;
-  addPrefetchingId: (id: string) => void;
-  removePrefetchingId: (id: string) => void;
-
   chatMessages: ChatMessage[];
   activeSuggestion: Suggestion | null;
   setActiveSuggestion: (s: Suggestion | null) => void;
@@ -63,15 +56,6 @@ export const useSessionStore = create<SessionStore>((set) => ({
   setGeneratingSuggestions: (v) => set({ isGeneratingSuggestions: v }),
   suggestionError: null,
   setSuggestionError: (msg) => set({ suggestionError: msg }),
-
-  prefetchedAnswers: {},
-  prefetchingIds: [],
-  setPrefetchedAnswer: (id, content) =>
-    set((s) => ({ prefetchedAnswers: { ...s.prefetchedAnswers, [id]: content } })),
-  addPrefetchingId: (id) =>
-    set((s) => ({ prefetchingIds: [...s.prefetchingIds, id] })),
-  removePrefetchingId: (id) =>
-    set((s) => ({ prefetchingIds: s.prefetchingIds.filter((x) => x !== id) })),
 
   chatMessages: [],
   activeSuggestion: null,
@@ -110,8 +94,6 @@ export const useSessionStore = create<SessionStore>((set) => ({
       suggestionError: null,
       isGeneratingSuggestions: false,
       isChatStreaming: false,
-      prefetchedAnswers: {},
-      prefetchingIds: [],
       isRecording: false,
       recordingToggleSeq: 0,
     }),
