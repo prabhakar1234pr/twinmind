@@ -46,23 +46,37 @@ function normalizeType(raw: string): (typeof SUGGESTION_TYPES)[number] | null {
   return TYPE_ALIASES[key] ?? null;
 }
 
+function strField(s: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    if (typeof s[k] === "string" && (s[k] as string).trim()) return (s[k] as string).trim();
+  }
+  return "";
+}
+
 function validate(obj: unknown): SuggestionsApiResponse | null {
   if (!obj || typeof obj !== "object") return null;
-  const maybe = obj as { suggestions?: unknown };
-  if (!Array.isArray(maybe.suggestions)) return null;
-  const cleaned = maybe.suggestions
+  // Accept top-level array OR { suggestions: [...] }
+  const arr = Array.isArray(obj)
+    ? obj
+    : Array.isArray((obj as { suggestions?: unknown }).suggestions)
+    ? (obj as { suggestions: unknown[] }).suggestions
+    : null;
+  if (!arr) return null;
+
+  const cleaned = arr
     .map((raw) => {
       if (!raw || typeof raw !== "object") return null;
       const s = raw as Record<string, unknown>;
-      const rawType = typeof s.type === "string" ? s.type : "";
+      const rawType = strField(s, "type");
       const type = normalizeType(rawType);
-      const preview = typeof s.preview === "string" ? s.preview : "";
-      const fullContext =
-        typeof s.fullContext === "string" ? s.fullContext : "";
+      // Accept camelCase or snake_case variants
+      const preview = strField(s, "preview");
+      const fullContext = strField(s, "fullContext", "full_context", "context", "detail");
       if (!type || !preview || !fullContext) return null;
       return { type, preview, fullContext };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
+
   if (cleaned.length < 3) return null;
   return { suggestions: cleaned.slice(0, 3) };
 }
@@ -94,12 +108,12 @@ async function callGroq(
     // No response_format — it causes json_validate_failed on some Groq-hosted models.
     // We extract JSON from the raw text ourselves via extractJson().
     temperature: 0.4,
-    max_tokens: 500,
+    max_tokens: 900,
     messages: [
       {
         role: "system",
         content:
-          "You are a precise JSON-producing assistant. Always return valid JSON matching the requested schema. Output ONLY the JSON object, nothing else.",
+          'You are a JSON API. Respond with ONLY a valid JSON object. No markdown, no prose, no explanation. Start your response with { and end with }. The schema is: {"suggestions":[{"type":"string","preview":"string","fullContext":"string"}]}',
       },
       { role: "user", content: stricterPrefix + prompt },
     ],
