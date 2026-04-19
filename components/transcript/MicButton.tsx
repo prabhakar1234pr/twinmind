@@ -36,7 +36,7 @@ export function MicButton({ isRecording, disabled, onClick, disabledReason }: Pr
         )}
       </button>
       <span className="text-xs text-muted-foreground">
-        {isRecording ? "Recording\u2026 click to stop" : "Click to start"}
+        {isRecording ? "Recording… click to stop" : "Click to start"}
       </span>
     </div>
   );

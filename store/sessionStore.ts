@@ -38,6 +38,13 @@ interface SessionStore {
   recordingToggleSeq: number;
   requestRecordingToggle: () => void;
 
+  // Latency metrics surfaced in the header for the demo reviewer
+  lastSuggestionLatencyMs: number | null;
+  lastChatFirstTokenMs: number | null;
+  lastSuggestionAt: number | null;
+  setLastSuggestionLatencyMs: (ms: number) => void;
+  setLastChatFirstTokenMs: (ms: number) => void;
+
   resetSession: () => void;
 }
 
@@ -83,6 +90,13 @@ export const useSessionStore = create<SessionStore>((set) => ({
   requestRecordingToggle: () =>
     set((s) => ({ recordingToggleSeq: s.recordingToggleSeq + 1 })),
 
+  lastSuggestionLatencyMs: null,
+  lastChatFirstTokenMs: null,
+  lastSuggestionAt: null,
+  setLastSuggestionLatencyMs: (ms) =>
+    set({ lastSuggestionLatencyMs: ms, lastSuggestionAt: Date.now() }),
+  setLastChatFirstTokenMs: (ms) => set({ lastChatFirstTokenMs: ms }),
+
   resetSession: () =>
     set({
       sessionId: uid("sess-"),
@@ -96,5 +110,8 @@ export const useSessionStore = create<SessionStore>((set) => ({
       isChatStreaming: false,
       isRecording: false,
       recordingToggleSeq: 0,
+      lastSuggestionLatencyMs: null,
+      lastChatFirstTokenMs: null,
+      lastSuggestionAt: null,
     }),
 }));

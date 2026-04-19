@@ -29,6 +29,7 @@ export function useChat(): UseChatResult {
       appendToMessage,
       finalizeMessage,
       setChatStreaming,
+      setLastChatFirstTokenMs,
     } = useSessionStore.getState();
 
     const { apiKey, chatSystemPrompt, chatModel } = useSettingsStore.getState();
@@ -76,6 +77,8 @@ export function useChat(): UseChatResult {
       chatModel,
     };
 
+    const t0 = Date.now();
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -116,6 +119,9 @@ export function useChat(): UseChatResult {
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
           if (chunk) {
+            if (!receivedAny) {
+              setLastChatFirstTokenMs(Date.now() - t0);
+            }
             appendToMessage(assistantId, chunk);
             receivedAny = true;
           }

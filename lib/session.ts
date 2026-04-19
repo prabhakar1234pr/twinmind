@@ -43,6 +43,88 @@ export function downloadExport(session: ExportedSession): void {
 }
 
 /**
+ * Build a human-readable plain-text export of the session: transcript,
+ * suggestion batches, and chat history. Each section is clearly demarcated
+ * so the file reads cleanly in any text editor.
+ */
+export function buildExportText(args: {
+  sessionId: string;
+  startedAt: number;
+  transcript: TranscriptChunk[];
+  suggestionBatches: SuggestionBatch[];
+  chatMessages: ChatMessage[];
+}): string {
+  const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString();
+  const fmtDateTime = (ts: number) => new Date(ts).toLocaleString();
+
+  const lines: string[] = [];
+
+  lines.push("# TwinMind Live Suggestions — Session Export");
+  lines.push("");
+  lines.push(`Session ID:   ${args.sessionId}`);
+  lines.push(`Started at:   ${fmtDateTime(args.startedAt)}`);
+  lines.push(`Exported at:  ${fmtDateTime(Date.now())}`);
+  lines.push("");
+
+  lines.push("## Transcript");
+  lines.push("");
+  if (args.transcript.length === 0) {
+    lines.push("(no transcript captured)");
+  } else {
+    for (const chunk of args.transcript) {
+      lines.push(`[${fmtTime(chunk.timestamp)}] ${chunk.text}`);
+    }
+  }
+  lines.push("");
+
+  lines.push("## Suggestions");
+  lines.push("");
+  if (args.suggestionBatches.length === 0) {
+    lines.push("(no suggestion batches generated)");
+  } else {
+    args.suggestionBatches.forEach((batch, i) => {
+      lines.push(`--- Batch ${i + 1} @ ${fmtTime(batch.timestamp)} ---`);
+      batch.suggestions.forEach((s, j) => {
+        lines.push(`  ${j + 1}. [${s.type}] ${s.preview}`);
+        if (s.fullContext && s.fullContext !== s.preview) {
+          lines.push(`     ${s.fullContext}`);
+        }
+      });
+      lines.push("");
+    });
+  }
+
+  lines.push("## Chat");
+  lines.push("");
+  if (args.chatMessages.length === 0) {
+    lines.push("(no chat messages)");
+  } else {
+    for (const msg of args.chatMessages) {
+      const who = msg.role === "user" ? "User" : "Assistant";
+      lines.push(`[${fmtTime(msg.timestamp)}] ${who}:`);
+      lines.push(msg.content);
+      lines.push("");
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function downloadExportText(text: string, sessionId: string): void {
+  const iso = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `twinmind-session-${sessionId}-${iso}.txt`;
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Build the rolling transcript slice sent to the suggestions API.
  * Takes the last N chunks so recency is weighted and prompts stay cheap.
  */

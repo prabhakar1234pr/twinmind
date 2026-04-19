@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatSystemPrompt: DEFAULT_CHAT_SYSTEM_PROMPT,
   expansionPrompt: DEFAULT_EXPANSION_PROMPT,
   contextWindowChunks: 8,
+  expansionContextWindowChunks: 20,
   refreshIntervalSec: 30,
   whisperModel: "whisper-large-v3",
   chatModel: "openai/gpt-oss-120b",

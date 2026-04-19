@@ -50,6 +50,7 @@ export interface Settings {
   chatSystemPrompt: string;
   expansionPrompt: string;
   contextWindowChunks: number;
+  expansionContextWindowChunks: number;
   refreshIntervalSec: number;
   whisperModel: string;
   chatModel: string;

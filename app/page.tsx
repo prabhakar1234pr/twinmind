@@ -70,6 +70,37 @@ export default function HomePage() {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, []);
 
+  // Spacebar toggles recording — a bit of ergonomic polish for the demo.
+  // Ignored when an input/textarea/contenteditable is focused so normal
+  // typing (settings modal, chat composer) still works. Modifiers are
+  // rejected so browser shortcuts like space-to-scroll-with-Shift keep
+  // their expected behaviour.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== " " && e.code !== "Space") return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (active) {
+        const tag = active.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          active.isContentEditable
+        ) {
+          return;
+        }
+      }
+
+      e.preventDefault();
+      useSessionStore.getState().requestRecordingToggle();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (!hydrated) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

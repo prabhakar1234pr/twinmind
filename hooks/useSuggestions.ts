@@ -34,6 +34,7 @@ export function useSuggestions(): UseSuggestionsResult {
       addSuggestionBatch,
       setGeneratingSuggestions,
       setSuggestionError,
+      setLastSuggestionLatencyMs,
     } = useSessionStore.getState();
 
     const { apiKey, suggestionPrompt, contextWindowChunks, chatModel } =
@@ -60,6 +61,8 @@ export function useSuggestions(): UseSuggestionsResult {
     inFlightRef.current = true;
     setGeneratingSuggestions(true);
     setSuggestionError(null);
+
+    const t0 = Date.now();
 
     try {
       const payload: SuggestionsApiRequest = {
@@ -114,6 +117,7 @@ export function useSuggestions(): UseSuggestionsResult {
 
       addSuggestionBatch(batch);
       lastBatchAtRef.current = now;
+      setLastSuggestionLatencyMs(Date.now() - t0);
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Failed to fetch suggestions.";
