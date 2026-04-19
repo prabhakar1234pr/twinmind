@@ -1,16 +1,21 @@
 node_modules
 .next
 .vercel
+.env
 .env*.local
 *.log
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
 .claude/
+.mcp.json
+.playwright-mcp/
 
 # Internal — not part of the submission
 docs/
 TwinMind - Live Suggestions Assignment*.pdf
 
-
-.vercel
+# Noisy per-run eval artifacts (keep the archived per-version reports only)
+scripts/eval-report-2026-*.md
+scripts/debug-prompt.ts
+ui-record-page.png

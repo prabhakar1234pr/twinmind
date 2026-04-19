@@ -70,3 +70,46 @@ export function buildChatTranscript(chunks: TranscriptChunk[]): string {
   const tail = joined.slice(-MAX_CHARS);
   return `[... earlier transcript truncated for context window ...]\n${tail}`;
 }
+
+/**
+ * Build a transcript shaped for Groq's tight per-minute token budget.
+ * Keeps every one of the last `maxRecentChunks` (dense tail) and samples every
+ * `samplingRate`-th chunk from older content (lossy head). For a 60-chunk
+ * hour-long transcript that produces roughly: 20 dense + 8 sampled = 28 chunks
+ * ≈ 4k input tokens, leaving plenty of headroom under the 6k tokens/minute
+ * ceiling for the completion response.
+ */
+export function buildSmartChatTranscript(
+  chunks: TranscriptChunk[],
+  maxRecentChunks = 20,
+  samplingRate = 5
+): string {
+  if (chunks.length === 0) return "";
+
+  const formatChunk = (c: TranscriptChunk) =>
+    `[${new Date(c.timestamp).toLocaleTimeString()}] ${c.text}`;
+
+  if (chunks.length <= maxRecentChunks) {
+    return chunks.map(formatChunk).join("\n");
+  }
+
+  const splitIdx = chunks.length - maxRecentChunks;
+  const head = chunks.slice(0, splitIdx);
+  const tail = chunks.slice(splitIdx);
+
+  const sampledHead = head.filter(
+    (_, i) => i % samplingRate === 0 || i === head.length - 1
+  );
+
+  const parts: string[] = [];
+  if (sampledHead.length > 0) {
+    parts.push(
+      `[... earlier transcript, sampled 1 of every ${samplingRate} chunks ...]`
+    );
+    parts.push(sampledHead.map(formatChunk).join("\n"));
+    parts.push(`[... end of sampled history, recent chunks follow ...]`);
+  }
+  parts.push(tail.map(formatChunk).join("\n"));
+
+  return parts.join("\n");
+}

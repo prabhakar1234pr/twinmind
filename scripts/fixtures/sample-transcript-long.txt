@@ -1,0 +1,34 @@
+[00:00:30] Alex: Thanks everyone for jumping in. Quick context — we ran the GraphQL pilot for 30 days on the search endpoints. Results came in yesterday.
+[00:01:00] Alex: Headline: 40% latency improvement at p50, 12% at p99. We also reduced payload size by roughly 35%.
+[00:01:30] Priya: 40% is significant. Was that measured under production load or synthetic traffic?
+[00:02:00] Alex: Production. We routed 10% of search traffic through the GraphQL gateway for the entire 30 days.
+[00:02:30] Priya: Got it. And what about error rates? The last thing we need is a latency win that hides a reliability regression.
+[00:03:00] Alex: Error rates were actually slightly lower. 0.12% on GraphQL vs 0.18% on REST. But the sample size is small, so take it with a grain of salt.
+[00:03:30] Jon: I'm more worried about the N+1 pattern. GraphQL makes it really easy to write a query that fans out badly.
+[00:04:00] Alex: Yeah. We used DataLoader on every resolver that crosses a service boundary. Plus Redis resolver-level caching with a 30 second TTL on hot paths.
+[00:04:30] Jon: OK that's reasonable. What about the mutation story? GraphQL mutations are where most of the operational pain shows up in my experience.
+[00:05:00] Alex: We deliberately kept mutations out of scope for this pilot. All writes still go through the REST path.
+[00:05:30] Priya: I think that's the right call, but we should decide now — are we heading toward full GraphQL everywhere, or GraphQL-for-reads and REST-for-writes as the steady state?
+[00:06:00] Devon: If we don't commit to one direction, we'll end up with the worst of both. Two auth flows, two error shapes, two monitoring stacks.
+[00:06:30] Jon: Agreed. My vote: GraphQL for reads, REST for writes. Admit the asymmetry and tool for it.
+[00:07:00] Alex: Works for me. The next question is federation vs schema stitching.
+[00:07:30] Priya: Can you remind us of the difference in one sentence?
+[00:08:00] Alex: Federation is decentralized — each service owns its schema and Apollo router composes them. Stitching is centralized — the gateway owns the composed schema.
+[00:08:30] Devon: I'd push for federation. We already run polyrepo and teams ship independently. Centralizing the schema at the gateway becomes a bottleneck.
+[00:09:00] Jon: I want to flag risk on the Apollo Router license. They changed terms mid-2023 and large customers had to renegotiate. Let's make sure we're OK before we commit.
+[00:09:30] Alex: Good flag. I'll pull the license doc before Thursday's architecture review.
+[00:10:00] Priya: What would rollout look like? Specifically when we'd see business impact.
+[00:10:30] Alex: Phase 1 — 30 days — remaining read endpoints onto the gateway. Phase 2 — 60 days — introduce federation for the search and catalog services. Phase 3 — TBD — decide on mutations.
+[00:11:00] Jon: Have we looked at what our clients need to do? Mobile team, web team, partner SDKs?
+[00:11:30] Alex: Mobile is the easy one — they're already using an abstraction layer. Web needs to update the Apollo client to the new gateway URL. Partner SDKs are the hardest — we'd need a compatibility shim for at least 90 days.
+[00:12:00] Devon: 90 days feels tight for partners. Some of them take six months to ship any code change.
+[00:12:30] Alex: Fair. Let's plan for 180 days on the partner shim and communicate early.
+[00:13:00] Priya: One more — observability. How do we know if the gateway is the bottleneck?
+[00:13:30] Alex: We're exporting per-resolver metrics to Grafana. P99 tail latency, cache hit rate, and upstream call count.
+[00:14:00] Jon: Set up an SLO on the gateway before we scale traffic. Learn what good looks like while stakes are low.
+[00:14:30] Priya: Agreed. Let's commit to an SLO doc by next Friday.
+[00:15:00] Alex: OK, I'll drive that. Anything else before we wrap?
+[00:15:30] Devon: One open question — who owns the schema review process? Right now it's ad hoc.
+[00:16:00] Alex: Good point. Let me draft a lightweight RFC process this week — schema changes need a named reviewer and a 24-hour comment window.
+[00:16:30] Jon: That works. Let's keep it lightweight — heavy process kills GraphQL's flexibility advantage.
+[00:17:00] Priya: OK, I'll take the SLO doc. Alex — you're on RFC process and license check. Devon — pilot write-up into the design doc. Next sync Thursday.

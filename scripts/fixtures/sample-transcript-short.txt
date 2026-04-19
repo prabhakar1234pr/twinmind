@@ -1,0 +1,3 @@
+[00:00:30] Lisa: We have three open tickets for the dashboard.
+[00:01:00] Marco: Can we triage them together? I want to push a release by Friday.
+[00:01:30] Lisa: Sure. The critical one is the filter state reset bug.

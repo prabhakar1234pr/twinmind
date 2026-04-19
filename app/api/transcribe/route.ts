@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
-import { apiError, createGroqClient, getApiKeyFromRequest } from "@/lib/groq";
+import {
+  apiError,
+  createGroqClient,
+  getApiKeyFromRequest,
+  isRateLimitError,
+} from "@/lib/groq";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+
+const MIN_AUDIO_BYTES = 2_000;
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -26,6 +33,11 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof Blob) || file.size === 0) {
     console.error("[transcribe] missing or empty audio blob");
     return apiError(422, "No audio blob in 'audio' field.");
+  }
+
+  if (file.size < MIN_AUDIO_BYTES) {
+    console.error(`[transcribe] audio too short size=${file.size}b`);
+    return apiError(422, "Audio chunk too short to transcribe.");
   }
 
   console.log(`[transcribe] model=${model} size=${file.size}b type=${file.type}`);
@@ -55,6 +67,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Transcription failed.";
+    if (isRateLimitError(err)) {
+      console.error(`[transcribe] rate limit ms=${Date.now() - t0}`);
+      return apiError(
+        429,
+        "Whisper rate limit reached. Audio will retry shortly."
+      );
+    }
     console.error(`[transcribe] error ms=${Date.now() - t0}`, msg);
     return apiError(500, msg);
   }

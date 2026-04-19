@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, CheckSquare, Download, Mic, MicOff, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { Download, Key, Mic, MicOff, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -8,18 +8,24 @@ import { buildExport, downloadExport } from "@/lib/session";
 
 interface Props {
   onOpenSettings: () => void;
-  onFinishSession?: () => void;
 }
 
-export function Header({ onOpenSettings, onFinishSession }: Props) {
+export function Header({ onOpenSettings }: Props) {
   const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
   const resetSession = useSessionStore((s) => s.resetSession);
   const isRecording = useSessionStore((s) => s.isRecording);
   const requestRecordingToggle = useSessionStore((s) => s.requestRecordingToggle);
+  const transcriptChunks = useSessionStore((s) => s.transcriptChunks);
+  const chatMessages = useSessionStore((s) => s.chatMessages);
+  const suggestionBatches = useSessionStore((s) => s.suggestionBatches);
+
+  const hasContent =
+    transcriptChunks.length > 0 ||
+    chatMessages.length > 0 ||
+    suggestionBatches.length > 0;
 
   const handleExport = () => {
-    const { sessionId, startedAt, transcriptChunks, suggestionBatches, chatMessages } =
-      useSessionStore.getState();
+    const { sessionId, startedAt } = useSessionStore.getState();
     const settings = useSettingsStore.getState();
     const payload = buildExport({
       sessionId,
@@ -32,10 +38,18 @@ export function Header({ onOpenSettings, onFinishSession }: Props) {
     downloadExport(payload);
   };
 
-  const handleReset = () => {
+  const handleEndSession = () => {
+    // Stop the mic if it's on, leave the transcript/suggestions/chat visible
+    // on the page. A separate "Clear" action is available if the user wants
+    // to start over (Export is the persistence path the assignment specifies).
+    if (isRecording) requestRecordingToggle();
+  };
+
+  const handleClear = () => {
+    if (!hasContent) return;
     if (
       confirm(
-        "Clear current session? Transcript, suggestions, and chat will be erased. Export first if you want to keep them."
+        "Clear everything? Transcript, suggestions, and chat will be erased. Export first if you want to keep them."
       )
     ) {
       resetSession();
@@ -45,9 +59,6 @@ export function Header({ onOpenSettings, onFinishSession }: Props) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-3 sm:h-14 sm:px-4">
       <div className="flex items-center gap-2 sm:gap-3">
-        <a href="/" className="rounded-md p-1 text-muted-foreground hover:bg-muted" title="Back to sessions">
-          <ArrowLeft className="h-4 w-4" />
-        </a>
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold sm:h-8 sm:w-8 sm:text-sm">
           TM
         </div>
@@ -64,7 +75,9 @@ export function Header({ onOpenSettings, onFinishSession }: Props) {
             API key required
           </span>
         )}
-        {/* Mic button: only visible on sm–lg (transcript panel is hidden there) */}
+
+        {/* Record / Stop: at sm–lg the transcript panel is hidden, so we
+            surface the mic toggle in the header at those breakpoints. */}
         <button
           onClick={requestRecordingToggle}
           className={cn(
@@ -78,39 +91,44 @@ export function Header({ onOpenSettings, onFinishSession }: Props) {
         >
           {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
-        {onFinishSession && (
+
+        {isRecording && (
           <button
-            onClick={onFinishSession}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-green-600 text-white hover:bg-green-700 sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
-            title="Finish session"
+            onClick={handleEndSession}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-white hover:bg-red-700 sm:h-9 sm:px-3"
+            title="End the recording"
           >
-            <CheckSquare className="h-4 w-4" />
-            <span className="hidden text-sm sm:inline">Finish</span>
+            <Square className="h-3.5 w-3.5" />
+            <span className="hidden text-sm sm:inline">End session</span>
           </button>
         )}
-        <button
-          onClick={handleReset}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
-          title="Clear session"
-        >
-          <Trash2 className="h-4 w-4" />
-          <span className="hidden text-sm sm:inline">Clear</span>
-        </button>
+
         <button
           onClick={handleExport}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background hover:bg-muted sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
+          disabled={!hasContent}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:hover:bg-background sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
           title="Export session JSON"
         >
           <Download className="h-4 w-4" />
           <span className="hidden text-sm sm:inline">Export</span>
         </button>
+
+        <button
+          onClick={handleClear}
+          disabled={!hasContent}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-background sm:h-9 sm:px-3 sm:text-sm"
+          title="Clear session data"
+        >
+          Clear
+        </button>
+
         <button
           onClick={onOpenSettings}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
-          title="Settings"
+          title="Groq API key"
         >
-          <SettingsIcon className="h-4 w-4" />
-          <span className="hidden text-sm sm:inline">Settings</span>
+          <Key className="h-4 w-4" />
+          <span className="hidden text-sm sm:inline">API key</span>
         </button>
       </div>
     </header>

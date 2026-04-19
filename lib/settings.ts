@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   whisperModel: "whisper-large-v3",
   chatModel: "openai/gpt-oss-120b",
   autoRefresh: true,
+  captureSystemAudio: false,
 };
 
 export const WHISPER_MODEL_OPTIONS = [

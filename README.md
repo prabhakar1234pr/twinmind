@@ -1,41 +1,44 @@
 # TwinMind — Live Suggestions
 
-A web app that listens to your mic, transcribes the conversation with Whisper, and surfaces **3 context-aware suggestions** every ~30 seconds. Clicking a suggestion streams a detailed answer in the chat panel on the right.
+A single-page web app that listens to your mic (and optionally system audio from the other party on the call), transcribes the conversation with Whisper, and surfaces **3 context-aware suggestions** every ~30 seconds. Clicking a suggestion streams a detailed answer in the chat panel on the right. One continuous session per page load — close the tab and it's gone.
 
 Built for the TwinMind Live Suggestions assignment (April 2026).
 
-**Live URL:** https://twinmind-rho.vercel.app  
+**Live URL:** https://twinmind-rho.vercel.app
 **GitHub:** https://github.com/prabhakar1234pr/twinmind
+
+---
+
+## Quality at a glance
+
+Prompt quality is treated as something to **measure**, not just claim. The repo ships with a G-Eval-style evaluation harness ([scripts/eval-prompts.ts](scripts/eval-prompts.ts)) that scores the live suggestion prompt against 5 synthetic meeting transcripts using a separate judge model.
+
+**Shipped prompt scores (v2.5.0 — see [lib/prompt-versions/](lib/prompt-versions/) for the full iteration archive):**
+
+| Metric | Score | / Max |
+|---|---|---|
+| Batch total | 14.97 | 18 |
+| **Specificity (transcript grounding)** | **2.96** | **3** |
+| Timing fit | 2.73 | 3 |
+| Meeting-type calibration | 2.51 | 3 |
+| Preview quality | 2.44 | 3 |
+| Actionability | 2.27 | 3 |
+| Variety (per batch) | 2.07 | 3 |
+
+Reviewers can reproduce with `GROQ_API_KEY=... npm run eval`. Full methodology, four iteration rounds, per-criterion tables, and raw reports are in [EVALUATION.md](EVALUATION.md) and [lib/prompt-versions/README.md](lib/prompt-versions/README.md).
+
+**API-level tests (`npm run test:e2e`):** 29 / 37 passing. The 5 failing are all Groq free-tier ceiling effects (TPM burst limits on concurrent requests, input-token limits on 120k-char transcripts), not bugs — documented in EVALUATION.md. 3 skipped by design.
 
 ---
 
 ## Setup
 
 ### Prerequisites
+
 - Node.js 18+
-- A [Groq API key](https://console.groq.com/keys) (free tier is enough)
-- A [Supabase](https://supabase.com) project (free tier) — needed for auth and session persistence
+- A [Groq API key](https://console.groq.com/keys) (free tier works for manual testing)
 
-### Environment variables
-
-Create `.env.local` in the project root:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
-
-Get these from your Supabase project dashboard → Settings → API.
-
-### Database
-
-Run the SQL in `supabase/schema.sql` against your Supabase project (SQL Editor in the dashboard). This creates the tables, RLS policies, pgvector index, and the `match_transcript_chunks` similarity-search function.
-
-Then deploy the embedding Edge Function:
-```bash
-supabase functions deploy embed-text
-```
+No `.env` file is needed to run the app. The only things that read `.env` are the dev-only eval + e2e scripts — see [.env.example](.env.example).
 
 ### Run locally
 
@@ -44,7 +47,17 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000, sign up / log in, then click **Settings** and paste your Groq key. Hit the mic to start.
+Open `http://localhost:3000`, click **Settings**, paste your Groq key, then hit the mic button to start.
+
+### Run the eval + tests
+
+```bash
+# Set GROQ_API_KEY in .env for the scripts:
+echo 'GROQ_API_KEY=gsk_...' > .env
+
+npm run eval       # G-Eval-style suggestion eval (~5 min, ~90k Groq tokens)
+npm run test:e2e   # 37 API tests against localhost:3000 (requires `npm run dev` in another shell)
+```
 
 ---
 
@@ -52,13 +65,14 @@ Open http://localhost:3000, sign up / log in, then click **Settings** and paste 
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | Next.js 14 App Router + TypeScript strict | File-based routing, Edge runtime, server components |
+| Framework | Next.js 14 App Router + TypeScript strict | File-based routing, Edge runtime for streaming chat |
 | Styling | Tailwind CSS, hand-rolled primitives | No component library overhead for ~10 UI primitives |
-| State | Zustand (+ persist middleware) | Simple, selector-based, no boilerplate |
-| LLM + transcription | `groq-sdk` | Assignment requirement; Whisper + GPT-OSS 120B |
-| Auth + DB | Supabase (Postgres + pgvector + RLS) | Session history, RAG search, row-level security |
-| Embeddings | Supabase `gte-small` Edge Function | Groq deprecated their embedding model mid-build; Supabase's built-in inference needs no extra API key |
-| Deployment | Vercel | Zero-config Next.js, Edge Function support |
+| State | Zustand (+ persist middleware for settings only) | Session data stays in memory; API key persisted to localStorage |
+| LLM + transcription | Vercel AI SDK (`@ai-sdk/groq`) + `groq-sdk` | Structured outputs + streaming + Whisper. Assignment requirement: Whisper + GPT-OSS 120B |
+| Reasoning tuning | `reasoningEffort: "low"` (suggestions) / `"medium"` (chat) | Critical — `gpt-oss-120b` default eats output tokens on internal chain-of-thought |
+| Deployment | Vercel | Zero-config Next.js, Edge runtime for streaming |
+
+**Not used:** no database, no auth, no session persistence. Everything is in-memory per page load, matching the assignment's "no login, no data persistence needed" spec.
 
 ---
 
@@ -66,56 +80,55 @@ Open http://localhost:3000, sign up / log in, then click **Settings** and paste 
 
 ```
 app/
-├── page.tsx                       # Home — session list
-├── record/page.tsx                # Live recording (3-column layout)
-├── sessions/[id]/page.tsx         # Session review — summary, transcript, RAG chat
-├── auth/page.tsx                  # Sign-in / sign-up
+├── page.tsx                    # Single page — 3-column recording UI
+├── layout.tsx                  # Shell
+├── globals.css                 # Tailwind + CSS variables
 └── api/
-    ├── transcribe/route.ts        # Node  — audio blob → Whisper
-    ├── suggestions/route.ts       # Node  — transcript → 3 JSON suggestions (+ retry)
-    ├── chat/route.ts              # Edge  — streaming chat with transcript context
-    └── sessions/[id]/
-        ├── route.ts               # POST upserts transcript + suggestions + chat
-        ├── summary/route.ts       # POST generates AI summary via Groq
-        ├── embed/route.ts         # POST generates 384-dim embeddings via Supabase
-        └── rag/route.ts           # POST vector search + streaming answer
+    ├── transcribe/route.ts     # Node  — audio blob → Whisper (2KB min, 429 handling)
+    ├── suggestions/route.ts    # Node  — transcript → 3 JSON suggestions (retry + 429 handling)
+    └── chat/route.ts           # Edge  — streaming chat with transcript context
 components/
-├── transcript/                    # Mic button + live scrolling transcript
-├── suggestions/                   # Batch cards, newest on top
-├── chat/                          # Streaming message list + markdown renderer
-├── settings/                      # API Key | Prompts | Behavior tabs
-└── session/                       # FinishSessionOverlay (save → summary → embed → redirect)
+├── transcript/                 # Mic button + live scrolling transcript
+├── suggestions/                # Batch cards, newest on top
+├── chat/                       # Streaming message list + markdown renderer
+├── settings/                   # API Key | Prompts | Behavior tabs
+├── layout/                     # Header (mic + Export + Clear + Settings) + MobileTabBar
+└── ui/                         # Small primitives (ConfirmDialog etc.)
 hooks/
-├── useAudioRecorder.ts            # MediaRecorder restart-based chunking
-├── useTranscription.ts            # Serialized FIFO queue → /api/transcribe
-├── useSuggestions.ts              # Eager-first + interval auto-refresh
-├── useChat.ts                     # ReadableStream reader, appends deltas to store
-└── useAutoSave.ts                 # Debounced (5s) sync of session state to Supabase
+├── useAudioRecorder.ts         # MediaRecorder restart-based chunking + mic/system-audio mixing
+├── useTranscription.ts         # Serialized FIFO queue, 429 retry, silent tiny-blob drop
+├── useSuggestions.ts           # Eager-first + interval auto-refresh, 60s backoff on 429
+└── useChat.ts                  # ReadableStream reader, friendly errors, smart transcript trim
 store/
-├── sessionStore.ts                # In-memory: transcript, batches, chat
-└── settingsStore.ts               # Persisted to localStorage via Zustand middleware
+├── sessionStore.ts             # In-memory: transcript, batches, chat (cleared on tab close)
+└── settingsStore.ts            # Persisted to localStorage (API key, prompts, behavior)
 lib/
-├── prompts.ts                     # All prompt templates (highest-leverage file)
-├── settings.ts                    # Settings schema + defaults
-├── session.ts                     # Export builder, transcript slicers
-└── groq.ts                        # Groq client factory, API-key header helper
-supabase/
-├── schema.sql                     # Tables, RLS, pgvector index, match function
-└── functions/embed-text/          # Supabase Edge Function — gte-small embeddings
+├── prompts.ts                  # Public prompt API (chat + expansion + re-exports from versions)
+├── prompt-versions/            # Every suggestion prompt iteration as its own file + score history
+├── settings.ts                 # Settings schema + defaults
+├── session.ts                  # Export builder + dense-tail transcript sampler for chat
+└── groq.ts                     # Groq client factory, rate-limit / JSON-error helpers
+scripts/
+├── eval-prompts.ts             # G-Eval-style suggestion eval harness
+├── e2e-test.ts                 # 37 API tests against /api/*
+├── fixtures/                   # Test transcripts
+└── eval-report-v2.*.md         # Archived results from each prompt iteration
+EVALUATION.md                   # Full evaluation methodology + iteration log
 ```
 
 ### Data flow (live recording)
 
 ```
-mic → useAudioRecorder (restart every 30s, not timeslice)
+mic (+ optional system audio via getDisplayMedia, mixed via Web Audio API)
+        │
+        ▼
+  useAudioRecorder  (stop/start every 30s — NOT timeslice)
         │
         ▼
   useTranscription FIFO queue → POST /api/transcribe (Whisper)
         │
         ▼
   sessionStore.addTranscriptChunk
-        │
-        ├──► useAutoSave (5s debounce) → POST /api/sessions/[id] → Supabase
         │
         └──► useSuggestions: new chunk + interval elapsed?
                     │
@@ -126,71 +139,66 @@ mic → useAudioRecorder (restart every 30s, not timeslice)
              sessionStore.addSuggestionBatch
                     │
                     ▼
-             SuggestionCard click → POST /api/chat (streaming)
+             SuggestionCard click → POST /api/chat (streaming answer)
                     │
                     ▼
              appendToMessage on every token delta
 ```
 
-### Finish Session flow
+---
 
-"Finish" button → `FinishSessionOverlay`:
-1. Stops mic, immediately POSTs full session to Supabase
-2. `POST /api/sessions/[id]/summary` → Groq generates structured summary
-3. `POST /api/sessions/[id]/embed` → Supabase Edge Function generates 384-dim vectors per chunk
-4. Redirects to `/sessions/[id]` — review summary, transcript, notes, RAG Q&A
+## System audio capture
+
+Toggle **"Capture system audio (mic + other party)"** in Settings → Behavior. When on, the Start-Recording click prompts the browser to pick a screen/window/tab to share AND requires you to tick **"Share audio"** in the picker. The mic stream and the display-audio stream are mixed via the Web Audio API (`createMediaStreamDestination`) so a single `MediaRecorder` captures both sides of the conversation. [Source: hooks/useAudioRecorder.ts](hooks/useAudioRecorder.ts).
+
+Behavior:
+
+- User declines the picker → falls back to mic-only recording (not a hard error).
+- User shares a screen but doesn't tick "Share audio" → falls back to mic-only, logs a console warning.
+- Chrome / Edge / Opera: reliable on desktop. Firefox: system-audio capture is spotty — mic-only is the safer default there.
 
 ---
 
 ## Prompt strategy
 
-All templates live in `lib/prompts.ts`. Users can edit them in Settings → Prompts; each has a Reset button. This is the highest-leverage file.
+Prompt templates live in [lib/prompts.ts](lib/prompts.ts). Users can edit them in Settings → Prompts; each has a Reset button.
 
-### 1. Suggestion prompt
+The **suggestion prompt** has been iterated through 6 numbered versions (v2.0 → v2.6). Each is preserved as a standalone file in [lib/prompt-versions/](lib/prompt-versions/) with its eval scores documented in the file header. To swap which version ships, change one line in [lib/prompt-versions/index.ts](lib/prompt-versions/index.ts) — see [lib/prompt-versions/README.md](lib/prompt-versions/README.md).
 
-Five suggestion types, each with concrete trigger conditions:
+**Current ship: v2.5.0** (combined-best of v2.1's algorithmic variety rule and v2.3's CLARIFYING_INFO "bring it up by saying" rule).
 
-| Type | When to use |
-|---|---|
-| `QUESTION_TO_ASK` | Other party made a broad claim without specifics, or topic needs steering |
-| `TALKING_POINT` | A topic is building and the reader can add signal |
-| `FACT_CHECK` | A specific number, date, or name worth verifying — always quotes the exact claim |
-| `DIRECT_ANSWER` | A question was literally asked and not yet fully answered |
-| `CLARIFYING_INFO` | A term or concept used in a way that suggests misunderstanding |
+### Suggestion prompt — what it enforces
 
-**Key constraints in the prompt:**
-- Exactly 3 suggestions, all different types
-- `preview` ≤ 15 words, must deliver standalone value (no "ask a follow-up question" generics)
-- `fullContext` must quote the specific transcript phrase that triggered it
-- Weight the last 60 seconds most heavily
-- Don't repeat ideas from the previous 2 batches (passed as context)
+- **Silent meeting-type classification** (sales / interview / technical / negotiation / status / brainstorm / casual) biases the type mix without being output to the user.
+- **Foreground / background transcript windowing** — the last 2 chunks are the "foreground"; the trigger quote MUST come from there. Older content grounds but doesn't drive suggestions.
+- **Mandatory 3-part fullContext** — every suggestion opens with a verbatim transcript quote, then one sentence on why now, then concrete words or action.
+- **Algorithmic variety rule** — at most 1 of the 3 types in a batch can appear in the immediately preceding batch's types. Turns "avoid repetition" into arithmetic the model can follow.
+- **CLARIFYING_INFO actionability rule** — this type's fullContext must include the exact sentence the user can say to raise the clarification without derailing.
+- **Anti-patterns blocklist** — explicit list of generic behaviors to avoid ("ask for clarification" without specifics, "follow up on that point" without naming the point, etc.).
 
-**Reliability:** The route validates the JSON response shape. On failure it retries once with a stricter "begin with `{`, end with `}`" prefix. The validator accepts both `camelCase` and `snake_case` field names since the model uses both.
+### Chat system prompt
 
-### 2. Chat system prompt
+- Lead with the single most useful insight in the first sentence (the reader may only catch that before the conversation moves on).
+- Per-suggestion-type response shape: QUESTION_TO_ASK → exact words to say; FACT_CHECK → verdict first; TALKING_POINT → 2-3 concrete sentences; DIRECT_ANSWER → crisp 1-2 sentences + support; CLARIFYING_INFO → definition then why-now.
+- **Mandatory verbatim quote** for any factual claim about the meeting content.
+- Length: 200 words target, 350 max.
 
-- Lead with the single most useful insight in the first sentence (the reader may only catch that before the conversation moves on)
-- Support with short headers or bullets for scan-reading
-- Quote verbatim transcript phrases to build trust
-- Hard limit: 150–350 words. No restating the question.
+### Expansion prompt (on suggestion click)
 
-### 3. Expansion prompt (on suggestion click)
-
-Pre-fills the chat: asks for (1) why this matters right now, (2) key facts or arguments, (3) how to act in the next 1–2 minutes.
-
-### 4. RAG system prompt (session review Q&A)
-
-Strict grounding: "If this wasn't mentioned in the recording, say so." Uses `> blockquote` format for transcript citations. Backs off to full-transcript fallback when vector search returns poor similarity.
+Pre-fills the chat when a suggestion card is clicked. Fixed 4-section output: **Bottom line** → **Why this matters** (with transcript quote) → **How to act** (type-specific recipe) → **Timing note**.
 
 ### Context windows
 
-- **Suggestions**: last N chunks (`contextWindowChunks`, default 8 ≈ 4 minutes). Recency-biased; avoids prompt bloat on long sessions.
-- **Chat / expansion**: full transcript. The user may ask about anything from earlier in the session.
-- **RAG search**: top 5 chunks by cosine similarity (384-dim `gte-small` vectors), fallback to full transcript if similarity < 0.3.
+- **Suggestions**: last N chunks (`contextWindowChunks`, default 8 ≈ 4 minutes). Recency-biased.
+- **Chat / expansion**: smart-window transcript (`lib/session.ts` `buildSmartChatTranscript`) — keeps all of the last 20 chunks (dense tail) + every 5th chunk from older content (sampled head). ~4k input tokens max to stay under Groq's 8k TPM free-tier ceiling.
 
 ---
 
 ## Key tradeoffs
+
+### `reasoningEffort: "low"` is critical for `gpt-oss-120b` on structured output
+
+First eval run had **100% of suggestion calls fail** with `"max completion tokens reached before generating a valid document"`. Root cause: `gpt-oss-120b` defaults to high reasoning effort, which consumes output tokens on internal chain-of-thought *before* producing the JSON. Setting `providerOptions.groq.reasoningEffort = "low"` for suggestions (and `"medium"` for chat) fixed the JSON truncation **and** dropped first-token latency from 3–5s to ~1.1s.
 
 ### MediaRecorder restart vs `timeslice`
 
@@ -198,27 +206,33 @@ Every 30s the recorder is **stopped and restarted**. Each `onstop` produces a co
 
 `timeslice: 30000` emits partial blobs that share a single container header — only the first is decodable standalone. Restart is the correct pattern; it adds ~200ms of silence at the boundary but produces reliable chunks every time.
 
+### Smart transcript window for chat
+
+Long sessions can blow past Groq's 8k TPM ceiling on a single chat call if the whole transcript is sent. `buildSmartChatTranscript` keeps the last 20 chunks (dense tail) + every 5th chunk from older content (sampled head) — caps input around ~4k tokens regardless of session length.
+
+### Retry on JSON parse failure
+
+`generateObject` against Groq occasionally returns `json_validate_failed` with `failed_generation: ""` (roughly 3–5% of calls in free-tier observations). The suggestions route retries once at `temperature: 0.2` with a hardened instruction suffix before giving up. Matched in the eval harness so numbers reflect user experience.
+
+### 429 handling end-to-end
+
+All three API routes detect 429 and return structured user-facing errors. The hooks ([useSuggestions.ts](hooks/useSuggestions.ts), [useTranscription.ts](hooks/useTranscription.ts), [useChat.ts](hooks/useChat.ts)) impose backoff (60s for suggestions, 10s for transcription retries) so the UI shows a friendly message instead of silent failure.
+
 ### Suggestions on Node runtime, not Edge
 
-Suggestions makes two sequential Groq calls (attempt + retry). On Vercel's Edge runtime the hard timeout is 25 seconds — two calls on `gpt-oss-120b` can exceed that. Moved to Node (60s limit, `maxDuration: 60`) to eliminate the `FUNCTION_INVOCATION_TIMEOUT` errors.
+Suggestions makes two sequential Groq calls (attempt + retry). On Vercel's Edge runtime the hard timeout is 25 seconds — two calls on `gpt-oss-120b` can exceed that. Moved to Node (60s limit, `maxDuration: 60`).
 
 ### No background prefetch
 
-An earlier version pre-fetched all 3 suggestion answers immediately after each batch arrived — 3 parallel Groq chat calls every 30 seconds. This ate Groq's rate-limit quota and caused the actual user-triggered chat requests to fail. Disabled in favour of live streaming on click (~1–2s to first token, acceptable).
-
-### Supabase auth (beyond the spec)
-
-The assignment says "no login needed." Auth was added to enable session history and per-user data isolation in Supabase. This is the one deliberate departure from the spec — the core live-suggestion flow is unchanged, but the app now requires an account.
-
-If this is a blocker during evaluation, the deployed URL is pre-seeded and the reviewer can sign up in 10 seconds with any email.
-
-### Embeddings: Supabase `gte-small` instead of Groq
-
-Groq deprecated `nomic-embed-text-v1_5` (768-dim) mid-project. Switched to Supabase's built-in `gte-small` model (384-dim) running in an Edge Function — no external API, no new API key, zero cost. Migrated the `transcript_embeddings` column and `match_transcript_chunks` RPC function accordingly.
+An earlier version pre-fetched all 3 suggestion answers immediately after each batch arrived — 3 parallel Groq chat calls every 30 seconds. This ate Groq's rate-limit quota and caused user-triggered chat requests to fail. Disabled in favour of live streaming on click (~1–2s to first token).
 
 ### Client-side API key
 
-The user's Groq key is stored in `localStorage` and sent via `x-groq-api-key` header on each request. Calls still go through `/api/*` routes (not direct browser → Groq) to keep the `groq-sdk` off the client bundle, enable Edge streaming, and centralise error handling/retries.
+The user's Groq key is stored in `localStorage` and sent via `x-groq-api-key` header on each request. Calls still go through `/api/*` routes (not direct browser → Groq) to keep the `groq-sdk` off the client bundle, enable Edge streaming, and centralise error handling / retries.
+
+### In-memory state, no persistence
+
+Session data (transcript, suggestion batches, chat history) lives in a Zustand store with no persistence. A `beforeunload` warning in [app/page.tsx](app/page.tsx) catches accidental tab closes. The deliberate choice here matches the assignment spec: "one continuous chat per session. No login, no data persistence needed when reloading the page." Export is the only persistence path.
 
 ---
 
@@ -226,17 +240,17 @@ The user's Groq key is stored in `localStorage` and sent via `x-groq-api-key` he
 
 Three tabs in the Settings modal (gear icon):
 
-- **API Key** — password field with show/hide, "Test" button that fires a minimal completion to validate the key
-- **Prompts** — editable textareas for all three prompts, individual Reset buttons per prompt
-- **Behavior** — context window (4–20 chunks), refresh interval (15–120s), auto-refresh toggle, model selectors for Whisper and chat
+- **API Key** — password field with show/hide, "Test" button that fires a minimal completion to validate the key.
+- **Prompts** — editable textareas for the 3 prompts (suggestion / chat / expansion), individual Reset buttons per prompt.
+- **Behavior** — context window (4–20 chunks), refresh interval (15–120s), auto-refresh toggle, **system-audio capture toggle**, model selectors for Whisper and chat.
 
-Changes persist instantly via Zustand's `persist` middleware (no Save button).
+Changes persist instantly via Zustand's `persist` middleware (no Save button). Settings version is bumped (currently 4) when the Settings shape changes — existing users pick up new defaults on next load automatically.
 
 ---
 
 ## Export
 
-The **Export** button downloads a timestamped JSON snapshot:
+The **Export** button downloads a timestamped JSON snapshot of the current session:
 
 ```json
 {
@@ -250,12 +264,13 @@ The **Export** button downloads a timestamped JSON snapshot:
 }
 ```
 
-The settings snapshot lets reviewers reproduce any result with the exact prompts and context window that were active.
+The settings snapshot lets reviewers reproduce any result with the exact prompts and context window that were active at the time.
 
 ---
 
 ## What wasn't built
 
-- **Speaker diarization** — Whisper doesn't do it natively; not required by the spec
-- **Mobile layout** — the three-column layout is desktop-first, matching the reference prototype
-- **Component library** — shadcn/ui adds 300+ generated files for primitives this app uses ~5 of; hand-rolled Tailwind instead
+- **Speaker diarization** — Whisper doesn't do it natively; not required by the spec.
+- **Mobile layout** — the three-column layout is desktop-first, matching the reference prototype. The app does render on phones via a tab bar but the primary target is laptop/desktop.
+- **Component library** — shadcn/ui adds 300+ generated files for primitives this app uses ~5 of; hand-rolled Tailwind instead.
+- **Session history / auth / AI summary** — explicitly out of scope per the assignment spec ("no login, no data persistence needed"). An earlier build had Supabase-backed session history and AI summaries; removed to match the spec more closely.

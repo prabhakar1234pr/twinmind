@@ -54,6 +54,11 @@ export interface Settings {
   whisperModel: string;
   chatModel: string;
   autoRefresh: boolean;
+  /**
+   * Also capture system audio (other party's voice via getDisplayMedia) and
+   * mix with the mic stream. When false, mic only.
+   */
+  captureSystemAudio: boolean;
 }
 
 export interface ExportedSession {

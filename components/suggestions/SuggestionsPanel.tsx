@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useChat } from "@/hooks/useChat";
 import { fillTemplate } from "@/lib/prompts";
+import { buildChatTranscript } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -23,7 +24,13 @@ export function SuggestionsPanel() {
 
   const handleSelect = async (s: Suggestion) => {
     setActiveSuggestion(s);
-    const content = fillTemplate(expansionPrompt, { suggestionFullContext: s.fullContext });
+    const transcriptChunks = useSessionStore.getState().transcriptChunks;
+    const content = fillTemplate(expansionPrompt, {
+      suggestionType: s.type,
+      suggestionPreview: s.preview,
+      suggestionFullContext: s.fullContext,
+      transcript: buildChatTranscript(transcriptChunks),
+    });
     await send({ content, linkedSuggestionId: s.id });
   };
 

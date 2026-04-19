@@ -1,8 +1,14 @@
 import { NextRequest } from "next/server";
 import { generateObject } from "ai";
 import { createGroq } from "@ai-sdk/groq";
+import type { GroqProvider } from "@ai-sdk/groq";
 import { z } from "zod";
-import { apiError, getApiKeyFromRequest } from "@/lib/groq";
+import {
+  apiError,
+  getApiKeyFromRequest,
+  isJsonSchemaError,
+  isRateLimitError,
+} from "@/lib/groq";
 import { fillTemplate } from "@/lib/prompts";
 import type { Suggestion, SuggestionsApiRequest } from "@/types";
 
@@ -35,6 +41,29 @@ function renderPreviousSuggestions(prev: Suggestion[]): string {
     .join("\n");
 }
 
+async function generateSuggestions(
+  groq: GroqProvider,
+  model: string,
+  prompt: string,
+  attempt: 1 | 2
+) {
+  const retrySuffix =
+    "\n\nPREVIOUS ATTEMPT FAILED JSON VALIDATION. Be extra careful: return ONLY a valid JSON object with exactly 3 suggestions, each with a valid type, a string preview, and a string fullContext. No prose, no markdown.";
+  const { object } = await generateObject({
+    model: groq(model),
+    schema: SuggestionSchema,
+    prompt: attempt === 1 ? prompt : prompt + retrySuffix,
+    temperature: attempt === 1 ? 0.4 : 0.2,
+    maxOutputTokens: 2000,
+    providerOptions: {
+      // gpt-oss-120b's default reasoning burns output tokens. Suggestions are a
+      // structured-output task — keep reasoning low for latency + reliability.
+      groq: { reasoningEffort: "low" },
+    },
+  });
+  return object;
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = getApiKeyFromRequest(req);
   if (!apiKey) return apiError(401, "Missing or invalid Groq API key.");
@@ -50,28 +79,50 @@ export async function POST(req: NextRequest) {
   if (!transcript || transcript.trim().length < 10) {
     return apiError(422, "Transcript too short to generate suggestions.");
   }
+  if (!suggestionPrompt || typeof suggestionPrompt !== "string") {
+    return apiError(422, "Missing suggestionPrompt.");
+  }
+  if (!chatModel || typeof chatModel !== "string") {
+    return apiError(422, "Missing chatModel.");
+  }
 
   const prompt = fillTemplate(suggestionPrompt, {
     transcript: transcript.trim(),
     previousSuggestions: renderPreviousSuggestions(previousSuggestions ?? []),
   });
 
-  try {
-    const groq = createGroq({ apiKey });
-    const { object } = await generateObject({
-      model: groq(chatModel),
-      schema: SuggestionSchema,
-      prompt,
-      temperature: 0.4,
-      maxOutputTokens: 900,
-    });
+  const groq = createGroq({ apiKey });
 
-    return new Response(JSON.stringify(object), {
+  try {
+    let result;
+    try {
+      result = await generateSuggestions(groq, chatModel, prompt, 1);
+    } catch (firstErr) {
+      if (isRateLimitError(firstErr)) throw firstErr;
+      if (isJsonSchemaError(firstErr)) {
+        console.warn(
+          "[suggestions] retrying after parse failure:",
+          firstErr instanceof Error ? firstErr.message : firstErr
+        );
+        result = await generateSuggestions(groq, chatModel, prompt, 2);
+      } else {
+        throw firstErr;
+      }
+    }
+
+    return new Response(JSON.stringify(result), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Suggestion call failed.";
+    if (isRateLimitError(err)) {
+      console.error("[suggestions] rate limit hit");
+      return apiError(
+        429,
+        "Rate limit reached. Suggestions will resume in ~30 seconds."
+      );
+    }
     console.error("[suggestions] error:", msg);
     return apiError(500, msg);
   }

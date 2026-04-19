@@ -21,8 +21,8 @@ export function formatRelative(ms: number, nowMs: number = Date.now()): string {
 }
 
 export function uid(_prefix = ""): string {
-  // Always generate a proper UUID so IDs are valid for Supabase upserts.
-  // The prefix param is kept for backwards compatibility but ignored.
+  // Always generate a proper UUID for stable keys across transcript chunks,
+  // suggestion batches, and chat messages in the in-memory session store.
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }

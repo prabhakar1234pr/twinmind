@@ -26,7 +26,8 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: SETTINGS_STORAGE_KEY,
-      version: 1,
+      // Bump when Settings shape changes so stale localStorage gets replaced.
+      version: 4,
     }
   )
 );

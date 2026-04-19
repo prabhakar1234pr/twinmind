@@ -29,13 +29,32 @@ export async function POST(req: NextRequest) {
   });
 
   const groq = createGroq({ apiKey });
-  const result = streamText({
-    model: groq(chatModel),
-    system: renderedSystem,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    temperature: 0.6,
-    maxOutputTokens: 800,
-  });
+  try {
+    const result = streamText({
+      model: groq(chatModel),
+      system: renderedSystem,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      temperature: 0.5,
+      maxOutputTokens: 1200,
+      providerOptions: {
+        // Chat answers need more depth than suggestions. Medium reasoning gives
+        // quality without blowing the first-token latency budget.
+        groq: { reasoningEffort: "medium" },
+      },
+    });
 
-  return result.toTextStreamResponse();
+    return result.toTextStreamResponse();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Chat call failed.";
+    if (
+      msg.includes("429") ||
+      msg.includes("rate_limit") ||
+      msg.toLowerCase().includes("rate limit")
+    ) {
+      console.error("[chat] rate limit hit");
+      return apiError(429, "Rate limit reached. Please wait ~30 seconds and retry.");
+    }
+    console.error("[chat] error:", msg);
+    return apiError(500, msg);
+  }
 }

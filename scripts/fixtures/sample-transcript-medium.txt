@@ -1,0 +1,13 @@
+[00:00:30] Prospect: Thanks for making time today. I'll be candid — we're evaluating three vendors right now, including your competitor Notion and Airtable.
+[00:01:00] Prospect: Our CEO has flagged data sovereignty as the single biggest concern. Everything has to stay in EU regions.
+[00:01:30] Prospect: Our procurement budget decision needs to be finalized before the end of Q3, so roughly six weeks.
+[00:02:00] Rep: Understood. On EU residency — we run fully in Frankfurt or Dublin, your choice, no cross-border replication.
+[00:02:30] Rep: We're also one of the fastest-growing databases on GitHub. We just crossed 70,000 stars.
+[00:03:00] Prospect: OK. Your pricing page lists USD only. Can you give me real numbers for a 50-seat workspace with EU hosting?
+[00:03:30] Rep: For 50 seats with EU hosting, most customers land between twelve and eighteen thousand USD per year.
+[00:04:00] Rep: We can also hold pricing for 90 days while you finalize.
+[00:04:30] Prospect: How does this compare to your Notion integration story? Most of our docs already live there.
+[00:05:00] Rep: We've got a two-way sync — changes in Notion push to us in near real time.
+[00:05:30] Prospect: Good. Last question — what's the typical rollout timeline for a company our size?
+[00:06:00] Rep: Two to three weeks if you have a dedicated owner. Longer if it's split across teams.
+[00:06:30] Prospect: I'll bring this back to the committee on Thursday. Can you send a one-pager that compares you against Notion on sovereignty specifically?

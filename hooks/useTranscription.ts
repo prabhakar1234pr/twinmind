@@ -13,11 +13,20 @@ interface UseTranscriptionResult {
   error: string | null;
 }
 
+const MIN_BLOB_BYTES = 2_000;
+const RATE_LIMIT_RETRY_MS = 10_000;
+
+interface Job {
+  blob: Blob;
+  durationSec: number;
+  attempts: number;
+}
+
 export function useTranscription(): UseTranscriptionResult {
   const [queueSize, setQueueSize] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const runningRef = useRef(false);
-  const queueRef = useRef<Array<{ blob: Blob; durationSec: number }>>([]);
+  const queueRef = useRef<Array<Job>>([]);
 
   const drain = useCallback(async () => {
     if (runningRef.current) return;
@@ -28,6 +37,14 @@ export function useTranscription(): UseTranscriptionResult {
         const job = queueRef.current.shift();
         setQueueSize(queueRef.current.length);
         if (!job) continue;
+
+        // Silently drop chunks that are too small to transcribe — these are
+        // expected at record start / stop boundaries and aren't worth bothering
+        // the user with.
+        if (job.blob.size < MIN_BLOB_BYTES) {
+          console.log(`[useTranscription] dropping tiny blob (${job.blob.size}b)`);
+          continue;
+        }
 
         const { apiKey, whisperModel } = useSettingsStore.getState();
         if (!apiKey) {
@@ -51,6 +68,19 @@ export function useTranscription(): UseTranscriptionResult {
 
           if (!res.ok) {
             const msg = await res.text();
+            if (res.status === 429 && job.attempts < 1) {
+              // Re-enqueue at the front and wait before trying again.
+              queueRef.current.unshift({ ...job, attempts: job.attempts + 1 });
+              setQueueSize(queueRef.current.length);
+              setError("Whisper rate limit. Retrying in 10 seconds…");
+              await new Promise((r) => setTimeout(r, RATE_LIMIT_RETRY_MS));
+              continue;
+            }
+            if (res.status === 422) {
+              // "audio too short" / "audio too short to transcribe" — log and drop.
+              console.log(`[useTranscription] server rejected (422): ${msg.slice(0, 200)}`);
+              continue;
+            }
             setError(`Transcription failed: ${msg.slice(0, 160)}`);
             continue;
           }
@@ -69,6 +99,11 @@ export function useTranscription(): UseTranscriptionResult {
         } catch (err) {
           const msg =
             err instanceof Error ? err.message : "Network error while transcribing.";
+          // Expected benign errors from Whisper on sub-threshold audio.
+          if (/too short|audio_too_short|file too small/i.test(msg)) {
+            console.log(`[useTranscription] benign error dropped: ${msg}`);
+            continue;
+          }
           setError(msg);
         }
       }
@@ -79,7 +114,7 @@ export function useTranscription(): UseTranscriptionResult {
 
   const enqueue = useCallback(
     (blob: Blob, durationSec: number) => {
-      queueRef.current.push({ blob, durationSec });
+      queueRef.current.push({ blob, durationSec, attempts: 0 });
       setQueueSize(queueRef.current.length);
       void drain();
     },

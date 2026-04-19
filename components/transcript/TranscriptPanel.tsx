@@ -16,6 +16,7 @@ interface Props {
 export function TranscriptPanel({ onNeedApiKey }: Props) {
   const chunks = useSessionStore((s) => s.transcriptChunks);
   const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
+  const captureSystemAudio = useSettingsStore((s) => s.captureSystemAudio);
   const { enqueue, error: transcribeError, queueSize } = useTranscription();
 
   const handleChunk = useCallback(
@@ -25,10 +26,12 @@ export function TranscriptPanel({ onNeedApiKey }: Props) {
     [enqueue]
   );
 
-  const { isRecording, start, stop, error: micError } = useAudioRecorder({
-    onChunk: handleChunk,
-    chunkIntervalMs: 30_000,
-  });
+  const { isRecording, start, stop, hasSystemAudio, error: micError } =
+    useAudioRecorder({
+      onChunk: handleChunk,
+      chunkIntervalMs: 30_000,
+      captureSystemAudio,
+    });
 
   const toggle = useCallback(async () => {
     if (isRecording) { stop(); return; }
@@ -80,6 +83,13 @@ export function TranscriptPanel({ onNeedApiKey }: Props) {
         {(micError || transcribeError) && (
           <p className="mx-4 mt-1 max-w-[90%] rounded-md bg-destructive/10 px-3 py-1.5 text-center text-xs text-destructive">
             {micError ?? transcribeError}
+          </p>
+        )}
+        {isRecording && captureSystemAudio && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {hasSystemAudio
+              ? "Capturing mic + system audio"
+              : "Capturing mic only — system audio declined"}
           </p>
         )}
       </div>

@@ -17,10 +17,13 @@ interface UseSuggestionsResult {
   refreshNow: () => Promise<void>;
 }
 
+const RATE_LIMIT_BACKOFF_MS = 60_000;
+
 export function useSuggestions(): UseSuggestionsResult {
   const lastBatchAtRef = useRef<number>(0);
   const inFlightRef = useRef<boolean>(false);
   const seenChunkCountRef = useRef<number>(0);
+  const backoffUntilRef = useRef<number>(0);
 
   const generate = useCallback(async () => {
     if (inFlightRef.current) return;
@@ -41,6 +44,8 @@ export function useSuggestions(): UseSuggestionsResult {
       return;
     }
     if (transcriptChunks.length === 0) return;
+
+    if (Date.now() < backoffUntilRef.current) return;
 
     const transcript = buildSuggestionTranscript(
       transcriptChunks,
@@ -74,8 +79,23 @@ export function useSuggestions(): UseSuggestionsResult {
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        setSuggestionError(text.slice(0, 240));
+        const raw = await res.text();
+        if (res.status === 429) {
+          backoffUntilRef.current = Date.now() + RATE_LIMIT_BACKOFF_MS;
+          setSuggestionError(
+            "Rate limit reached. Pausing suggestions for 60 seconds."
+          );
+        } else if (res.status === 422) {
+          setSuggestionError("Not enough transcript yet — keep recording.");
+        } else if (res.status === 401) {
+          setSuggestionError("Groq rejected the API key. Check Settings.");
+        } else if (res.status >= 500) {
+          setSuggestionError(
+            "Suggestion generation failed. Click Refresh to retry."
+          );
+        } else {
+          setSuggestionError(raw.slice(0, 240) || `HTTP ${res.status}`);
+        }
         return;
       }
 
@@ -97,7 +117,7 @@ export function useSuggestions(): UseSuggestionsResult {
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Failed to fetch suggestions.";
-      setSuggestionError(msg);
+      setSuggestionError(`Connection issue: ${msg}. Retrying shortly.`);
     } finally {
       inFlightRef.current = false;
       setGeneratingSuggestions(false);
@@ -113,6 +133,7 @@ export function useSuggestions(): UseSuggestionsResult {
 
       if (!autoRefresh || !apiKey) return;
       if (transcriptChunks.length === 0) return;
+      if (Date.now() < backoffUntilRef.current) return;
 
       const now = Date.now();
       const sinceLast = now - lastBatchAtRef.current;
@@ -137,6 +158,8 @@ export function useSuggestions(): UseSuggestionsResult {
   const refreshNow = useCallback(async () => {
     seenChunkCountRef.current =
       useSessionStore.getState().transcriptChunks.length;
+    // Manual refresh clears any active backoff so the user can retry immediately.
+    backoffUntilRef.current = 0;
     await generate();
   }, [generate]);
 

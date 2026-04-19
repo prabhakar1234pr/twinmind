@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
-import { buildChatTranscript } from "@/lib/session";
+import { buildSmartChatTranscript } from "@/lib/session";
 import { uid } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -71,7 +71,7 @@ export function useChat(): UseChatResult {
 
     const payload: ChatApiRequest = {
       messages: outgoingMessages,
-      transcript: buildChatTranscript(transcriptChunks),
+      transcript: buildSmartChatTranscript(transcriptChunks),
       systemPrompt: chatSystemPrompt,
       chatModel,
     };
@@ -88,20 +88,44 @@ export function useChat(): UseChatResult {
 
       if (!res.ok || !res.body) {
         const text = await res.text();
-        appendToMessage(
-          assistantId,
-          `Error from Groq: ${text.slice(0, 240) || res.statusText}`
-        );
+        if (res.status === 429) {
+          appendToMessage(
+            assistantId,
+            "Groq rate limit reached. Wait ~30 seconds and retry this message."
+          );
+        } else if (res.status === 401) {
+          appendToMessage(
+            assistantId,
+            "Groq rejected the API key. Open Settings and verify it."
+          );
+        } else {
+          appendToMessage(
+            assistantId,
+            `Error from Groq: ${text.slice(0, 240) || res.statusText}`
+          );
+        }
         return;
       }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        if (chunk) appendToMessage(assistantId, chunk);
+      let receivedAny = false;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          if (chunk) {
+            appendToMessage(assistantId, chunk);
+            receivedAny = true;
+          }
+        }
+      } catch (streamErr) {
+        const prefix = receivedAny
+          ? "\n\n— connection interrupted. Message may be incomplete."
+          : "\n\nConnection interrupted before any content arrived.";
+        appendToMessage(assistantId, prefix);
+        console.error("[useChat] stream error:", streamErr);
       }
     } catch (err) {
       const msg =
