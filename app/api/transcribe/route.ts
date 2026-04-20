@@ -5,6 +5,7 @@ import {
   getApiKeyFromRequest,
   isRateLimitError,
 } from "@/lib/groq";
+import { ASSIGNMENT_WHISPER_MODEL } from "@/lib/settings";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const file = form.get("audio");
-  const model = (form.get("model") as string) || "whisper-large-v3";
+  const model = ASSIGNMENT_WHISPER_MODEL;
 
   if (!(file instanceof Blob) || file.size === 0) {
     console.error("[transcribe] missing or empty audio blob");

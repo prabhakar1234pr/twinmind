@@ -55,11 +55,6 @@ export interface Settings {
   whisperModel: string;
   chatModel: string;
   autoRefresh: boolean;
-  /**
-   * Also capture system audio (other party's voice via getDisplayMedia) and
-   * mix with the mic stream. When false, mic only.
-   */
-  captureSystemAudio: boolean;
 }
 
 export interface ExportedSession {
@@ -76,7 +71,6 @@ export interface SuggestionsApiRequest {
   transcript: string;
   previousSuggestions: Suggestion[];
   suggestionPrompt: string;
-  chatModel: string;
 }
 
 export interface SuggestionsApiResponse {
@@ -87,7 +81,6 @@ export interface ChatApiRequest {
   messages: Array<Pick<ChatMessage, "role" | "content">>;
   transcript: string;
   systemPrompt: string;
-  chatModel: string;
 }
 
 export interface TranscribeApiResponse {

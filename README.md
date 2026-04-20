@@ -1,6 +1,6 @@
 # TwinMind — Live Suggestions
 
-A single-page web app that listens to your mic (and optionally system audio from the other party on the call), transcribes the conversation with Whisper, and surfaces **3 context-aware suggestions** every ~30 seconds. Clicking a suggestion streams a detailed answer in the chat panel on the right. One continuous session per page load — close the tab and it's gone.
+A single-page web app that listens to your mic, transcribes the conversation with Whisper, and surfaces **3 context-aware suggestions** every ~30 seconds. Clicking a suggestion streams a detailed answer in the chat panel on the right. One continuous session per page load — close the tab and it's gone.
 
 Built for the TwinMind Live Suggestions assignment (April 2026).
 
@@ -92,10 +92,10 @@ components/
 ├── suggestions/                # Batch cards, newest on top
 ├── chat/                       # Streaming message list + markdown renderer
 ├── settings/                   # API Key | Prompts | Behavior tabs
-├── layout/                     # Header (mic + Export + Clear + Settings) + MobileTabBar
-└── ui/                         # Small primitives (ConfirmDialog etc.)
+├── layout/                     # Header (mic + Export + Settings) + MobileTabBar
+└── ui/                         # Small shared UI primitives
 hooks/
-├── useAudioRecorder.ts         # MediaRecorder restart-based chunking + mic/system-audio mixing
+├── useAudioRecorder.ts         # MediaRecorder restart-based chunking (mic)
 ├── useTranscription.ts         # Serialized FIFO queue, 429 retry, silent tiny-blob drop
 ├── useSuggestions.ts           # Eager-first + interval auto-refresh, 60s backoff on 429
 └── useChat.ts                  # ReadableStream reader, friendly errors, smart transcript trim
@@ -119,7 +119,7 @@ EVALUATION.md                   # Full evaluation methodology + iteration log
 ### Data flow (live recording)
 
 ```
-mic (+ optional system audio via getDisplayMedia, mixed via Web Audio API)
+mic
         │
         ▼
   useAudioRecorder  (stop/start every 30s — NOT timeslice)
@@ -144,18 +144,6 @@ mic (+ optional system audio via getDisplayMedia, mixed via Web Audio API)
                     ▼
              appendToMessage on every token delta
 ```
-
----
-
-## System audio capture
-
-Toggle **"Capture system audio (mic + other party)"** in Settings → Behavior. When on, the Start-Recording click prompts the browser to pick a screen/window/tab to share AND requires you to tick **"Share audio"** in the picker. The mic stream and the display-audio stream are mixed via the Web Audio API (`createMediaStreamDestination`) so a single `MediaRecorder` captures both sides of the conversation. [Source: hooks/useAudioRecorder.ts](hooks/useAudioRecorder.ts).
-
-Behavior:
-
-- User declines the picker → falls back to mic-only recording (not a hard error).
-- User shares a screen but doesn't tick "Share audio" → falls back to mic-only, logs a console warning.
-- Chrome / Edge / Opera: reliable on desktop. Firefox: system-audio capture is spotty — mic-only is the safer default there.
 
 ---
 

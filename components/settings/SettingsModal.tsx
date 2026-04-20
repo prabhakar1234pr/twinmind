@@ -4,9 +4,9 @@ import { CheckCircle2, Eye, EyeOff, Loader2, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
 import {
-  CHAT_MODEL_OPTIONS,
+  ASSIGNMENT_CHAT_MODEL,
+  ASSIGNMENT_WHISPER_MODEL,
   DEFAULT_SETTINGS,
-  WHISPER_MODEL_OPTIONS,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -59,7 +59,6 @@ export function SettingsModal({ open, onClose }: Props) {
           messages: [{ role: "user", content: "Reply with the single word: ok" }],
           transcript: "",
           systemPrompt: "You are a test. Reply with only: ok",
-          chatModel: s.chatModel,
         }),
       });
       if (!res.ok) {
@@ -257,26 +256,13 @@ export function SettingsModal({ open, onClose }: Props) {
                 value={s.autoRefresh}
                 onChange={(v) => s.updateSettings({ autoRefresh: v })}
               />
-              <ToggleField
-                label="Capture system audio"
-                hint="When on, the Start Recording button will also prompt you to share a screen/tab with audio. The other party's voice is mixed into the recording."
-                value={s.captureSystemAudio}
-                onChange={(v) => s.updateSettings({ captureSystemAudio: v })}
-              />
-              <SelectField
-                label="Whisper model"
-                hint="Used for transcription."
-                value={s.whisperModel}
-                onChange={(v) => s.updateSettings({ whisperModel: v })}
-                options={WHISPER_MODEL_OPTIONS}
-              />
-              <SelectField
-                label="Chat model"
-                hint="Used for suggestions, expansions, and chat answers."
-                value={s.chatModel}
-                onChange={(v) => s.updateSettings({ chatModel: v })}
-                options={CHAT_MODEL_OPTIONS}
-              />
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                Models are fixed for assignment compliance:
+                <br />
+                Whisper: <code>{ASSIGNMENT_WHISPER_MODEL}</code>
+                <br />
+                Suggestions + chat: <code>{ASSIGNMENT_CHAT_MODEL}</code>
+              </div>
             </div>
           )}
         </div>
@@ -411,28 +397,3 @@ function ToggleField(props: {
   );
 }
 
-function SelectField(props: {
-  label: string;
-  hint: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium">{props.label}</label>
-      <select
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-      >
-        {props.options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <p className="mt-1 text-[11px] text-muted-foreground">{props.hint}</p>
-    </div>
-  );
-}

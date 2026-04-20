@@ -1,67 +1,32 @@
 "use client";
 
-import { RefreshCw, Sparkles } from "lucide-react";
-import { useMemo } from "react";
+import { RefreshCw } from "lucide-react";
 import { useChat } from "@/hooks/useChat";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { fillTemplate } from "@/lib/prompts";
-import { buildChatTranscript } from "@/lib/session";
-import { cn, uid } from "@/lib/utils";
+import { buildChatTranscriptFromWindow } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import type { Suggestion, TranscriptChunk } from "@/types";
-import { inferMeetingType, MeetingTypePill } from "./MeetingTypePill";
+import type { Suggestion } from "@/types";
 import { SuggestionBatch } from "./SuggestionBatch";
 import { SuggestionSkeletonBatch } from "./SuggestionSkeleton";
 
-/**
- * Hardcoded sales-call transcript used by the "Try with sample transcript"
- * button. Four chunks, 30s apart, ending at "now". Kept in the order the
- * prospect would actually have said them.
- */
-const SAMPLE_CHUNKS: Array<Pick<TranscriptChunk, "text" | "durationSec">> = [
-  {
-    text: "Prospect: Thanks for jumping on. We're evaluating three vendors right now, including Notion and Airtable, and you're the third.",
-    durationSec: 30,
-  },
-  {
-    text: "Prospect: Our biggest concern is honestly data sovereignty \u2014 our CEO flagged it last week, she wants everything in EU regions.",
-    durationSec: 30,
-  },
-  {
-    text: "Prospect: Our budget decision needs to be finalized before end of Q3, so roughly six weeks from now.",
-    durationSec: 30,
-  },
-  {
-    text: "Prospect: What's the pricing for a 50-seat workspace with EU hosting? Your pricing page only shows USD.",
-    durationSec: 30,
-  },
-];
-
-function loadSampleTranscript() {
-  const now = Date.now();
-  const { addTranscriptChunk } = useSessionStore.getState();
-  SAMPLE_CHUNKS.forEach((chunk, i) => {
-    // Oldest chunk at now - 30s * (length - 1 - i); last chunk at now.
-    const offsetSec = (SAMPLE_CHUNKS.length - 1 - i) * 30;
-    addTranscriptChunk({
-      id: uid("t-"),
-      text: chunk.text,
-      durationSec: chunk.durationSec,
-      timestamp: now - offsetSec * 1000,
-    });
-  });
-}
 
 export function SuggestionsPanel() {
   const batches = useSessionStore((s) => s.suggestionBatches);
   const transcriptChunks = useSessionStore((s) => s.transcriptChunks);
   const isGenerating = useSessionStore((s) => s.isGeneratingSuggestions);
   const error = useSessionStore((s) => s.suggestionError);
+  const isWaitingForTranscriptFlush = useSessionStore(
+    (s) => s.isWaitingForTranscriptFlush
+  );
   const activeSuggestion = useSessionStore((s) => s.activeSuggestion);
   const setActiveSuggestion = useSessionStore((s) => s.setActiveSuggestion);
   const expansionPrompt = useSettingsStore((s) => s.expansionPrompt);
-  const apiKey = useSettingsStore((s) => s.apiKey);
+  const expansionContextWindowChunks = useSettingsStore(
+    (s) => s.expansionContextWindowChunks
+  );
 
   const { refreshNow } = useSuggestions();
   const { send } = useChat();
@@ -73,20 +38,23 @@ export function SuggestionsPanel() {
       suggestionType: s.type,
       suggestionPreview: s.preview,
       suggestionFullContext: s.fullContext,
-      transcript: buildChatTranscript(currentChunks),
+      transcript: buildChatTranscriptFromWindow(
+        currentChunks,
+        expansionContextWindowChunks
+      ),
     });
-    await send({ content, linkedSuggestionId: s.id });
+    await send({
+      content: s.preview,
+      linkedSuggestionId: s.id,
+      displayContent: `[${s.type}] ${s.preview}`,
+      systemPromptOverride: content,
+    });
   };
-
-  const meetingType = useMemo(() => inferMeetingType(batches), [batches]);
-  const hasApiKey = apiKey.trim().length > 0;
 
   const reversed = [...batches].reverse();
   const isEmpty = reversed.length === 0;
   const showFirstBatchSkeleton =
     isEmpty && transcriptChunks.length > 0 && isGenerating;
-  const showSampleButton =
-    isEmpty && transcriptChunks.length === 0 && !isGenerating;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -96,18 +64,20 @@ export function SuggestionsPanel() {
           <span className="text-[11px] text-muted-foreground">
             3 per batch, newest on top
           </span>
-          {meetingType && <MeetingTypePill label={meetingType} />}
         </div>
         <button
           onClick={() => void refreshNow()}
-          disabled={isGenerating}
+          disabled={isGenerating || isWaitingForTranscriptFlush}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs hover:bg-muted disabled:opacity-50"
           title="Regenerate suggestions now"
         >
           <RefreshCw
-            className={cn("h-3.5 w-3.5", isGenerating && "animate-spin")}
+            className={cn(
+              "h-3.5 w-3.5",
+              (isGenerating || isWaitingForTranscriptFlush) && "animate-spin"
+            )}
           />
-          Refresh
+          {isWaitingForTranscriptFlush ? "Waiting for transcript…" : "Refresh"}
         </button>
       </div>
 
@@ -127,32 +97,6 @@ export function SuggestionsPanel() {
                 ? "Generating first suggestions…"
                 : "Start recording to see live suggestions. They refresh every ~30 seconds."}
             </p>
-            {showSampleButton && (
-              <div className="mt-4 flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!hasApiKey) return;
-                    loadSampleTranscript();
-                  }}
-                  disabled={!hasApiKey}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium transition-colors",
-                    hasApiKey
-                      ? "hover:border-primary/40 hover:bg-muted"
-                      : "cursor-not-allowed opacity-60"
-                  )}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Try with sample transcript
-                </button>
-                {!hasApiKey && (
-                  <span className="text-[11px] text-muted-foreground">
-                    Add your Groq key first
-                  </span>
-                )}
-              </div>
-            )}
           </div>
         ) : (
           reversed.map((batch, idx) => (
@@ -164,6 +108,11 @@ export function SuggestionsPanel() {
               isNewest={idx === 0}
             />
           ))
+        )}
+        {isWaitingForTranscriptFlush && (
+          <div className="text-center text-xs text-muted-foreground">
+            Waiting for transcript flush before refresh…
+          </div>
         )}
         {isGenerating && reversed.length > 0 && (
           <div className="text-center text-xs text-muted-foreground">

@@ -18,6 +18,7 @@ interface UseSuggestionsResult {
 }
 
 const RATE_LIMIT_BACKOFF_MS = 60_000;
+const MANUAL_REFRESH_TRANSCRIPT_WAIT_MS = 4_000;
 
 export function useSuggestions(): UseSuggestionsResult {
   const lastBatchAtRef = useRef<number>(0);
@@ -37,7 +38,7 @@ export function useSuggestions(): UseSuggestionsResult {
       setLastSuggestionLatencyMs,
     } = useSessionStore.getState();
 
-    const { apiKey, suggestionPrompt, contextWindowChunks, chatModel } =
+    const { apiKey, suggestionPrompt, contextWindowChunks } =
       useSettingsStore.getState();
 
     if (!apiKey) {
@@ -69,7 +70,6 @@ export function useSuggestions(): UseSuggestionsResult {
         transcript,
         previousSuggestions,
         suggestionPrompt,
-        chatModel,
       };
 
       const res = await fetch("/api/suggestions", {
@@ -160,6 +160,21 @@ export function useSuggestions(): UseSuggestionsResult {
   }, [generate]);
 
   const refreshNow = useCallback(async () => {
+    const store = useSessionStore.getState();
+    const beforeCount = store.transcriptChunks.length;
+    const isRecording = store.isRecording;
+    if (isRecording) {
+      useSessionStore.getState().setIsWaitingForTranscriptFlush(true);
+      useSessionStore.getState().requestTranscriptFlush();
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < MANUAL_REFRESH_TRANSCRIPT_WAIT_MS) {
+        await new Promise((r) => setTimeout(r, 150));
+        const afterCount = useSessionStore.getState().transcriptChunks.length;
+        if (afterCount > beforeCount) break;
+      }
+      useSessionStore.getState().setIsWaitingForTranscriptFlush(false);
+    }
+
     seenChunkCountRef.current =
       useSessionStore.getState().transcriptChunks.length;
     // Manual refresh clears any active backoff so the user can retry immediately.

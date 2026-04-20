@@ -6,6 +6,8 @@ import {
 } from "@/lib/prompts";
 
 export const SETTINGS_STORAGE_KEY = "twinmind-settings-v1";
+export const ASSIGNMENT_WHISPER_MODEL = "whisper-large-v3";
+export const ASSIGNMENT_CHAT_MODEL = "openai/gpt-oss-120b";
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: "",
@@ -15,18 +17,21 @@ export const DEFAULT_SETTINGS: Settings = {
   contextWindowChunks: 8,
   expansionContextWindowChunks: 20,
   refreshIntervalSec: 30,
-  whisperModel: "whisper-large-v3",
-  chatModel: "openai/gpt-oss-120b",
+  whisperModel: ASSIGNMENT_WHISPER_MODEL,
+  chatModel: ASSIGNMENT_CHAT_MODEL,
   autoRefresh: true,
-  captureSystemAudio: false,
 };
 
 export const WHISPER_MODEL_OPTIONS = [
-  { value: "whisper-large-v3", label: "whisper-large-v3 (most accurate)" },
-  { value: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo (faster)" },
+  {
+    value: ASSIGNMENT_WHISPER_MODEL,
+    label: "whisper-large-v3 (assignment fixed)",
+  },
 ];
 
 export const CHAT_MODEL_OPTIONS = [
-  { value: "openai/gpt-oss-120b", label: "openai/gpt-oss-120b (assignment default)" },
-  { value: "openai/gpt-oss-20b", label: "openai/gpt-oss-20b (faster)" },
+  {
+    value: ASSIGNMENT_CHAT_MODEL,
+    label: "openai/gpt-oss-120b (assignment fixed)",
+  },
 ];

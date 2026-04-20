@@ -10,6 +10,7 @@ import {
   isRateLimitError,
 } from "@/lib/groq";
 import { fillTemplate } from "@/lib/prompts";
+import { ASSIGNMENT_CHAT_MODEL } from "@/lib/settings";
 import type { Suggestion, SuggestionsApiRequest } from "@/types";
 
 export const runtime = "nodejs";
@@ -75,17 +76,13 @@ export async function POST(req: NextRequest) {
     return apiError(400, "Invalid JSON body.");
   }
 
-  const { transcript, previousSuggestions, suggestionPrompt, chatModel } = body;
+  const { transcript, previousSuggestions, suggestionPrompt } = body;
   if (!transcript || transcript.trim().length < 10) {
     return apiError(422, "Transcript too short to generate suggestions.");
   }
   if (!suggestionPrompt || typeof suggestionPrompt !== "string") {
     return apiError(422, "Missing suggestionPrompt.");
   }
-  if (!chatModel || typeof chatModel !== "string") {
-    return apiError(422, "Missing chatModel.");
-  }
-
   const prompt = fillTemplate(suggestionPrompt, {
     transcript: transcript.trim(),
     previousSuggestions: renderPreviousSuggestions(previousSuggestions ?? []),
@@ -96,7 +93,7 @@ export async function POST(req: NextRequest) {
   try {
     let result;
     try {
-      result = await generateSuggestions(groq, chatModel, prompt, 1);
+      result = await generateSuggestions(groq, ASSIGNMENT_CHAT_MODEL, prompt, 1);
     } catch (firstErr) {
       if (isRateLimitError(firstErr)) throw firstErr;
       if (isJsonSchemaError(firstErr)) {
@@ -104,7 +101,7 @@ export async function POST(req: NextRequest) {
           "[suggestions] retrying after parse failure:",
           firstErr instanceof Error ? firstErr.message : firstErr
         );
-        result = await generateSuggestions(groq, chatModel, prompt, 2);
+        result = await generateSuggestions(groq, ASSIGNMENT_CHAT_MODEL, prompt, 2);
       } else {
         throw firstErr;
       }

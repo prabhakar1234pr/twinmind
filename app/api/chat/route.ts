@@ -3,6 +3,7 @@ import { streamText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
 import { apiError, getApiKeyFromRequest } from "@/lib/groq";
 import { fillTemplate } from "@/lib/prompts";
+import { ASSIGNMENT_CHAT_MODEL } from "@/lib/settings";
 import type { ChatApiRequest } from "@/types";
 
 export const runtime = "edge";
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
     return apiError(400, "Invalid JSON body.");
   }
 
-  const { messages, transcript, systemPrompt, chatModel } = body;
+  const { messages, transcript, systemPrompt } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return apiError(422, "No messages in request.");
   }
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   const groq = createGroq({ apiKey });
   try {
     const result = streamText({
-      model: groq(chatModel),
+      model: groq(ASSIGNMENT_CHAT_MODEL),
       system: renderedSystem,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       temperature: 0.5,

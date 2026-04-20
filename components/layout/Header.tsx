@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileText, Key, Mic, MicOff, Square } from "lucide-react";
+import { Download, FileText, Mic, MicOff, Settings, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -23,7 +23,6 @@ function formatLatency(ms: number): string {
 
 export function Header({ onOpenSettings }: Props) {
   const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
-  const resetSession = useSessionStore((s) => s.resetSession);
   const isRecording = useSessionStore((s) => s.isRecording);
   const requestRecordingToggle = useSessionStore((s) => s.requestRecordingToggle);
   const transcriptChunks = useSessionStore((s) => s.transcriptChunks);
@@ -102,17 +101,6 @@ export function Header({ onOpenSettings }: Props) {
     // on the page. A separate "Clear" action is available if the user wants
     // to start over (Export is the persistence path the assignment specifies).
     if (isRecording) requestRecordingToggle();
-  };
-
-  const handleClear = () => {
-    if (!hasContent) return;
-    if (
-      confirm(
-        "Clear everything? Transcript, suggestions, and chat will be erased. Export first if you want to keep them."
-      )
-    ) {
-      resetSession();
-    }
   };
 
   return (
@@ -194,21 +182,12 @@ export function Header({ onOpenSettings }: Props) {
           </button>
 
           <button
-            onClick={handleClear}
-            disabled={!hasContent}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-background sm:h-9 sm:px-3 sm:text-sm"
-            title="Clear session data"
-          >
-            Clear
-          </button>
-
-          <button
             onClick={onOpenSettings}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3"
             title="Groq API key"
           >
-            <Key className="h-4 w-4" />
-            <span className="hidden text-sm sm:inline">API key</span>
+            <Settings className="h-4 w-4" />
+            <span className="hidden text-sm sm:inline">Settings</span>
           </button>
         </div>
       </div>

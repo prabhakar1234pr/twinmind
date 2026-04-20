@@ -154,6 +154,19 @@ export function buildChatTranscript(chunks: TranscriptChunk[]): string {
 }
 
 /**
+ * Build chat transcript from only the last N chunks. Useful for features that
+ * need a strict, user-controlled context window size.
+ */
+export function buildChatTranscriptFromWindow(
+  chunks: TranscriptChunk[],
+  windowChunks: number
+): string {
+  if (chunks.length === 0) return "";
+  const size = Math.max(1, windowChunks);
+  return buildChatTranscript(chunks.slice(-size));
+}
+
+/**
  * Build a transcript shaped for Groq's tight per-minute token budget.
  * Keeps every one of the last `maxRecentChunks` (dense tail) and samples every
  * `samplingRate`-th chunk from older content (lossy head). For a 60-chunk
