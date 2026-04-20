@@ -22,6 +22,12 @@ interface Job {
   attempts: number;
 }
 
+function isLikelyHallucinatedTail(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized.length > 24) return false;
+  return /^(thank\s*you|thanks)[.!?…\s]*$/i.test(normalized);
+}
+
 export function useTranscription(): UseTranscriptionResult {
   const [queueSize, setQueueSize] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +94,13 @@ export function useTranscription(): UseTranscriptionResult {
           const data = (await res.json()) as TranscribeApiResponse;
           const text = (data.text ?? "").trim();
           if (!text) continue;
+          if (
+            isLikelyHallucinatedTail(text) &&
+            useSessionStore.getState().transcriptChunks.length > 0
+          ) {
+            console.log(`[useTranscription] dropped likely hallucinated tail: "${text}"`);
+            continue;
+          }
 
           useSessionStore.getState().addTranscriptChunk({
             id: uid("t-"),
