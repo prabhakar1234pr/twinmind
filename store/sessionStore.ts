@@ -47,6 +47,12 @@ interface SessionStore {
   setLastChatFirstTokenMs: (ms: number) => void;
   isWaitingForTranscriptFlush: boolean;
   setIsWaitingForTranscriptFlush: (v: boolean) => void;
+
+  apiKeyDialogOpen: boolean;
+  apiKeyDialogMessage: string | null;
+  apiKeyDialogAction: "send" | "record" | null;
+  showApiKeyDialog: (message: string, action: "send" | "record") => void;
+  hideApiKeyDialog: () => void;
 }
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -100,4 +106,20 @@ export const useSessionStore = create<SessionStore>((set) => ({
   setLastChatFirstTokenMs: (ms) => set({ lastChatFirstTokenMs: ms }),
   isWaitingForTranscriptFlush: false,
   setIsWaitingForTranscriptFlush: (v) => set({ isWaitingForTranscriptFlush: v }),
+
+  apiKeyDialogOpen: false,
+  apiKeyDialogMessage: null,
+  apiKeyDialogAction: null,
+  showApiKeyDialog: (message, action) =>
+    set({
+      apiKeyDialogOpen: true,
+      apiKeyDialogMessage: message,
+      apiKeyDialogAction: action,
+    }),
+  hideApiKeyDialog: () =>
+    set({
+      apiKeyDialogOpen: false,
+      apiKeyDialogMessage: null,
+      apiKeyDialogAction: null,
+    }),
 }));

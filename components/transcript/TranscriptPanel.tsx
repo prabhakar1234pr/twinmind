@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { ensureValidApiKey } from "@/lib/apiKeyValidation";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useSessionStore } from "@/store/sessionStore";
@@ -8,14 +9,10 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { MicButton } from "./MicButton";
 import { TranscriptEntry } from "./TranscriptEntry";
 
-
-interface Props {
-  onNeedApiKey: () => void;
-}
-
-export function TranscriptPanel({ onNeedApiKey }: Props) {
+export function TranscriptPanel() {
   const chunks = useSessionStore((s) => s.transcriptChunks);
-  const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
+  const apiKey = useSettingsStore((s) => s.apiKey);
+  const showApiKeyDialog = useSessionStore((s) => s.showApiKeyDialog);
   const { enqueue, error: transcribeError, queueSize } = useTranscription();
 
   const handleChunk = useCallback(
@@ -34,9 +31,13 @@ export function TranscriptPanel({ onNeedApiKey }: Props) {
 
   const toggle = useCallback(async () => {
     if (isRecording) { stop(); return; }
-    if (!hasApiKey) { onNeedApiKey(); return; }
+    const validation = await ensureValidApiKey();
+    if (!validation.ok) {
+      showApiKeyDialog(validation.message, "record");
+      return;
+    }
     await start();
-  }, [isRecording, stop, hasApiKey, onNeedApiKey, start]);
+  }, [isRecording, stop, showApiKeyDialog, start]);
 
   // Sync recording state to store so header mic button can read it
   const setIsRecordingStore = useSessionStore((s) => s.setIsRecording);
@@ -88,7 +89,7 @@ export function TranscriptPanel({ onNeedApiKey }: Props) {
           isRecording={isRecording}
           onClick={toggle}
           disabled={false}
-          disabledReason={!hasApiKey ? "Add your Groq API key first" : undefined}
+          disabledReason={!apiKey.trim() ? "Add your Groq API key first" : undefined}
         />
         {(micError || transcribeError) && (
           <p className="mx-4 mt-1 max-w-[90%] rounded-md bg-destructive/10 px-3 py-1.5 text-center text-xs text-destructive">

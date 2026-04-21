@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import {
   apiError,
   createGroqClient,
+  getErrorStatus,
   getApiKeyFromRequest,
-  isRateLimitError,
 } from "@/lib/groq";
 import { ASSIGNMENT_WHISPER_MODEL } from "@/lib/settings";
 
@@ -15,10 +15,6 @@ const MIN_AUDIO_BYTES = 2_000;
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
   const apiKey = getApiKeyFromRequest(req);
-  if (!apiKey) {
-    console.error("[transcribe] missing API key");
-    return apiError(401, "Missing or invalid Groq API key.");
-  }
 
   let form: FormData;
   try {
@@ -68,14 +64,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Transcription failed.";
-    if (isRateLimitError(err)) {
-      console.error(`[transcribe] rate limit ms=${Date.now() - t0}`);
-      return apiError(
-        429,
-        "Whisper rate limit reached. Audio will retry shortly."
-      );
-    }
+    const status = getErrorStatus(err);
     console.error(`[transcribe] error ms=${Date.now() - t0}`, msg);
-    return apiError(500, msg);
+    return apiError(status, msg);
   }
 }

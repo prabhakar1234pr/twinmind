@@ -43,7 +43,10 @@ export function ChatPanel() {
         )}
       </div>
 
-      <ChatInput onSend={(content) => void send({ content })} disabled={isStreaming} />
+      <ChatInput
+        onSend={(content) => void send({ content })}
+        disabled={isStreaming}
+      />
     </div>
   );
 }

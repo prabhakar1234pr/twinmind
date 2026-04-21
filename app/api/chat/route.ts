@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
-import { apiError, getApiKeyFromRequest } from "@/lib/groq";
+import { apiError, getApiKeyFromRequest, getErrorStatus } from "@/lib/groq";
 import { fillTemplate } from "@/lib/prompts";
 import { ASSIGNMENT_CHAT_MODEL } from "@/lib/settings";
 import type { ChatApiRequest } from "@/types";
@@ -15,7 +15,6 @@ function sseEvent(event: string, payload: Record<string, unknown>): string {
 
 export async function POST(req: NextRequest) {
   const apiKey = getApiKeyFromRequest(req);
-  if (!apiKey) return apiError(401, "Missing or invalid Groq API key.");
 
   let body: ChatApiRequest;
   try {
@@ -77,13 +76,7 @@ export async function POST(req: NextRequest) {
             streamErr instanceof Error
               ? streamErr.message
               : "Chat stream failed.";
-          const lower = msg.toLowerCase();
-          const status =
-            msg.includes("429") ||
-            lower.includes("rate_limit") ||
-            lower.includes("rate limit")
-              ? 429
-              : 500;
+          const status = getErrorStatus(streamErr);
           controller.enqueue(
             encoder.encode(sseEvent("error", { status, message: msg }))
           );
@@ -103,15 +96,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Chat call failed.";
-    if (
-      msg.includes("429") ||
-      msg.includes("rate_limit") ||
-      msg.toLowerCase().includes("rate limit")
-    ) {
-      console.error("[chat] rate limit hit");
-      return apiError(429, "Rate limit reached. Please wait ~30 seconds and retry.");
-    }
+    const status = getErrorStatus(err);
     console.error("[chat] error:", msg);
-    return apiError(500, msg);
+    return apiError(status, msg);
   }
 }

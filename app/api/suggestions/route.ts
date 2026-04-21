@@ -5,6 +5,7 @@ import type { GroqProvider } from "@ai-sdk/groq";
 import { z } from "zod";
 import {
   apiError,
+  getErrorStatus,
   getApiKeyFromRequest,
   isJsonSchemaError,
   isRateLimitError,
@@ -67,7 +68,6 @@ async function generateSuggestions(
 
 export async function POST(req: NextRequest) {
   const apiKey = getApiKeyFromRequest(req);
-  if (!apiKey) return apiError(401, "Missing or invalid Groq API key.");
 
   let body: SuggestionsApiRequest;
   try {
@@ -113,14 +113,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Suggestion call failed.";
-    if (isRateLimitError(err)) {
-      console.error("[suggestions] rate limit hit");
-      return apiError(
-        429,
-        "Rate limit reached. Suggestions will resume in ~30 seconds."
-      );
-    }
+    const status = getErrorStatus(err);
     console.error("[suggestions] error:", msg);
-    return apiError(500, msg);
+    return apiError(status, msg);
   }
 }

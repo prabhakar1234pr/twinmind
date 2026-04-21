@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { ensureValidApiKey } from "@/lib/apiKeyValidation";
 import { API_KEY_HEADER } from "@/lib/groq";
 import {
   fetchWithTimeout,
@@ -51,8 +52,9 @@ export function useSuggestions(): UseSuggestionsResult {
     const { apiKey, suggestionPrompt, contextWindowChunks } =
       useSettingsStore.getState();
 
-    if (!apiKey) {
-      setSuggestionError("No API key set. Open Settings to add your Groq key.");
+    const validation = await ensureValidApiKey();
+    if (!validation.ok) {
+      setSuggestionError(validation.message);
       return;
     }
     if (transcriptChunks.length === 0) return;

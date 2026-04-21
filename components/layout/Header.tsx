@@ -22,7 +22,8 @@ function formatLatency(ms: number): string {
 }
 
 export function Header({ onOpenSettings }: Props) {
-  const hasApiKey = useSettingsStore((s) => s.apiKey.trim().length > 0);
+  const apiKey = useSettingsStore((s) => s.apiKey);
+  const hasApiKey = apiKey.trim().length > 0;
   const isRecording = useSessionStore((s) => s.isRecording);
   const requestRecordingToggle = useSessionStore((s) => s.requestRecordingToggle);
   const transcriptChunks = useSessionStore((s) => s.transcriptChunks);
@@ -145,7 +146,13 @@ export function Header({ onOpenSettings }: Props) {
                 ? "bg-red-500 text-white animate-pulse"
                 : "border border-border bg-background text-muted-foreground hover:bg-muted"
             )}
-            title={isRecording ? "Stop recording" : "Start recording (Space)"}
+            title={
+              isRecording
+                ? "Stop recording"
+                : !hasApiKey
+                ? "Add Groq API key first"
+                : "Start recording (Space)"
+            }
           >
             {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </button>

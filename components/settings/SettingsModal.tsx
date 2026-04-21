@@ -45,6 +45,11 @@ export function SettingsModal({ open, onClose }: Props) {
     if (!s.apiKey.trim()) {
       setTestState("fail");
       setTestMessage("Enter a key first.");
+      s.setApiKeyValidation({
+        status: "invalid",
+        message: "HTTP 401: API key is empty.",
+        validatedFor: "",
+      });
       return;
     }
     setTestState("loading");
@@ -60,17 +65,35 @@ export function SettingsModal({ open, onClose }: Props) {
 
       if (!res.ok) {
         const msg = await parseApiErrorMessage(res, "Request failed");
+        const full = `HTTP ${res.status}: ${msg.slice(0, 220)}`;
+        s.setApiKeyValidation({
+          status: "invalid",
+          message: full,
+          validatedFor: s.apiKey.trim(),
+        });
         setTestState("fail");
-        setTestMessage(`HTTP ${res.status}: ${msg.slice(0, 220)}`);
+        setTestMessage(full);
         return;
       }
 
       const payload = (await res.json()) as { message?: string };
+      const successMsg = payload.message || "API key valid.";
+      s.setApiKeyValidation({
+        status: "valid",
+        message: successMsg,
+        validatedFor: s.apiKey.trim(),
+      });
       setTestState("ok");
-      setTestMessage(payload.message || "API key valid.");
+      setTestMessage(successMsg);
     } catch (err) {
       setTestState("fail");
-      setTestMessage(err instanceof Error ? err.message : "Unknown error");
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      s.setApiKeyValidation({
+        status: "invalid",
+        message: msg,
+        validatedFor: s.apiKey.trim(),
+      });
+      setTestMessage(msg);
     }
   };
 

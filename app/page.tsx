@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/Header";
 import { MobileTabBar, type AppTab } from "@/components/layout/MobileTabBar";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { ApiKeyRequiredDialog } from "@/components/settings/ApiKeyRequiredDialog";
 import { SettingsModal } from "@/components/settings/SettingsModal";
 import { SuggestionsPanel } from "@/components/suggestions/SuggestionsPanel";
 import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
@@ -18,6 +19,10 @@ export default function HomePage() {
   const [suggestionsBadge, setSuggestionsBadge] = useState(0);
   const [chatBadge, setChatBadge] = useState(0);
   const activeTabRef = useRef<AppTab>("suggestions");
+  const apiKeyDialogOpen = useSessionStore((s) => s.apiKeyDialogOpen);
+  const apiKeyDialogMessage = useSessionStore((s) => s.apiKeyDialogMessage);
+  const apiKeyDialogAction = useSessionStore((s) => s.apiKeyDialogAction);
+  const hideApiKeyDialog = useSessionStore((s) => s.hideApiKeyDialog);
 
   const handleTabChange = (tab: AppTab) => {
     activeTabRef.current = tab;
@@ -130,7 +135,7 @@ export default function HomePage() {
             "lg:flex lg:flex-none lg:basis-[28%] lg:border-r lg:border-border"
           )}
         >
-          <TranscriptPanel onNeedApiKey={() => setSettingsOpen(true)} />
+          <TranscriptPanel />
         </section>
 
         {/* Suggestions */}
@@ -166,6 +171,16 @@ export default function HomePage() {
       />
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ApiKeyRequiredDialog
+        open={apiKeyDialogOpen}
+        action={apiKeyDialogAction}
+        message={apiKeyDialogMessage}
+        onClose={hideApiKeyDialog}
+        onOpenSettings={() => {
+          hideApiKeyDialog();
+          setSettingsOpen(true);
+        }}
+      />
     </>
   );
 }

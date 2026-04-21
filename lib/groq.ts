@@ -31,10 +31,9 @@ import Groq from "groq-sdk";
 
 export const API_KEY_HEADER = "x-groq-api-key";
 
-export function getApiKeyFromRequest(req: Request): string | null {
+export function getApiKeyFromRequest(req: Request): string {
   const key = req.headers.get(API_KEY_HEADER);
-  if (!key || key.trim().length < 8) return null;
-  return key.trim();
+  return key?.trim() ?? "";
 }
 
 export function createGroqClient(apiKey: string): Groq {
@@ -69,6 +68,29 @@ export function isRateLimitError(err: unknown): boolean {
     lower.includes("rate limit") ||
     lower.includes("too many requests")
   );
+}
+
+export function getErrorStatus(err: unknown): number {
+  if (typeof err === "object" && err !== null) {
+    const anyErr = err as {
+      status?: unknown;
+      response?: { status?: unknown };
+      code?: unknown;
+      message?: unknown;
+    };
+    const fromStatus = Number(anyErr.status);
+    if (Number.isInteger(fromStatus) && fromStatus >= 400) return fromStatus;
+    const fromResponse = Number(anyErr.response?.status);
+    if (Number.isInteger(fromResponse) && fromResponse >= 400) return fromResponse;
+    const code = String(anyErr.code ?? "").toLowerCase();
+    if (code.includes("rate")) return 429;
+    if (code.includes("timeout") || code.includes("timedout")) return 504;
+    const msg =
+      typeof anyErr.message === "string" ? anyErr.message.toLowerCase() : "";
+    if (msg.includes("rate limit") || msg.includes("rate_limit")) return 429;
+    if (msg.includes("timeout") || msg.includes("timed out")) return 504;
+  }
+  return 500;
 }
 
 /**

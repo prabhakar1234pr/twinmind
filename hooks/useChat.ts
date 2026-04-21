@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
+import { ensureValidApiKey } from "@/lib/apiKeyValidation";
 import { API_KEY_HEADER } from "@/lib/groq";
 import {
   fetchWithTimeout,
@@ -61,7 +62,6 @@ function extractSseEvents(buffer: string): { events: SseEvent[]; rest: string } 
 }
 
 export function useChat(): UseChatResult {
-  const validatedKeyRef = useRef<string | null>(null);
   const send = useCallback(
     async ({ content, linkedSuggestionId, displayContent, systemPromptOverride }: SendArgs) => {
       const trimmed = content.trim();
@@ -75,11 +75,18 @@ export function useChat(): UseChatResult {
         addChatMessage,
         appendToMessage,
         finalizeMessage,
+        showApiKeyDialog,
         setChatStreaming,
         setLastChatFirstTokenMs,
       } = useSessionStore.getState();
 
       const { apiKey, chatSystemPrompt } = useSettingsStore.getState();
+
+      const validation = await ensureValidApiKey();
+      if (!validation.ok) {
+        showApiKeyDialog(validation.message, "send");
+        return;
+      }
 
       const userMsg: ChatMessage = {
         id: uid("m-"),
@@ -89,52 +96,6 @@ export function useChat(): UseChatResult {
         linkedSuggestionId,
       };
       addChatMessage(userMsg);
-
-      if (!apiKey) {
-        const err: ChatMessage = {
-          id: uid("m-"),
-          role: "assistant",
-          content: "No API key set. Open Settings to add your Groq key.",
-          timestamp: Date.now(),
-        };
-        addChatMessage(err);
-        return;
-      }
-
-      if (validatedKeyRef.current !== apiKey) {
-        try {
-          const keyRes = await fetchWithTimeout("/api/key-test", {
-            method: "POST",
-            headers: { [API_KEY_HEADER]: apiKey },
-            timeoutMs: 10_000,
-          });
-          if (!keyRes.ok) {
-            const keyMsg = await parseApiErrorMessage(
-              keyRes,
-              "API key test failed."
-            );
-            addChatMessage({
-              id: uid("m-"),
-              role: "assistant",
-              content: `HTTP ${keyRes.status}: ${keyMsg}`,
-              timestamp: Date.now(),
-            });
-            validatedKeyRef.current = null;
-            return;
-          }
-          validatedKeyRef.current = apiKey;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "API key test failed.";
-          addChatMessage({
-            id: uid("m-"),
-            role: "assistant",
-            content: msg,
-            timestamp: Date.now(),
-          });
-          validatedKeyRef.current = null;
-          return;
-        }
-      }
 
       const assistantId = uid("m-");
       const assistantMsg: ChatMessage = {
