@@ -43,13 +43,10 @@ interface SessionStore {
   // Latency metrics surfaced in the header for the demo reviewer
   lastSuggestionLatencyMs: number | null;
   lastChatFirstTokenMs: number | null;
-  lastSuggestionAt: number | null;
   setLastSuggestionLatencyMs: (ms: number) => void;
   setLastChatFirstTokenMs: (ms: number) => void;
   isWaitingForTranscriptFlush: boolean;
   setIsWaitingForTranscriptFlush: (v: boolean) => void;
-
-  resetSession: () => void;
 }
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -99,30 +96,8 @@ export const useSessionStore = create<SessionStore>((set) => ({
 
   lastSuggestionLatencyMs: null,
   lastChatFirstTokenMs: null,
-  lastSuggestionAt: null,
-  setLastSuggestionLatencyMs: (ms) =>
-    set({ lastSuggestionLatencyMs: ms, lastSuggestionAt: Date.now() }),
+  setLastSuggestionLatencyMs: (ms) => set({ lastSuggestionLatencyMs: ms }),
   setLastChatFirstTokenMs: (ms) => set({ lastChatFirstTokenMs: ms }),
   isWaitingForTranscriptFlush: false,
   setIsWaitingForTranscriptFlush: (v) => set({ isWaitingForTranscriptFlush: v }),
-
-  resetSession: () =>
-    set({
-      sessionId: uid("sess-"),
-      startedAt: Date.now(),
-      transcriptChunks: [],
-      suggestionBatches: [],
-      chatMessages: [],
-      activeSuggestion: null,
-      suggestionError: null,
-      isGeneratingSuggestions: false,
-      isChatStreaming: false,
-      isRecording: false,
-      recordingToggleSeq: 0,
-      transcriptFlushSeq: 0,
-      lastSuggestionLatencyMs: null,
-      lastChatFirstTokenMs: null,
-      lastSuggestionAt: null,
-      isWaitingForTranscriptFlush: false,
-    }),
 }));

@@ -21,11 +21,10 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_SUGGESTION_PROMPT,
   fillTemplate,
-  CURRENT_SUGGESTION_VERSION,
 } from "../lib/prompts";
 import type { Suggestion, SuggestionType } from "../types";
 
-export const PROMPT_VERSION = CURRENT_SUGGESTION_VERSION;
+export const PROMPT_VERSION = "default";
 
 const TARGET_MODEL = "openai/gpt-oss-120b";
 const META_MODEL = "openai/gpt-oss-20b";

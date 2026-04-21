@@ -191,7 +191,6 @@ function suggestionPayload(transcript: string, extra: Record<string, unknown> = 
     transcript,
     previousSuggestions: [],
     suggestionPrompt: DEFAULT_SETTINGS.suggestionPrompt,
-    chatModel: DEFAULT_SETTINGS.chatModel,
     ...extra,
   };
 }
@@ -204,7 +203,6 @@ function chatPayload(
     messages,
     transcript: "",
     systemPrompt: DEFAULT_SETTINGS.chatSystemPrompt,
-    chatModel: DEFAULT_SETTINGS.chatModel,
     ...extra,
   };
 }
@@ -233,7 +231,6 @@ async function groupTranscribe() {
   await test("T1 synthetic audio blob → graceful status", async () => {
     const form = new FormData();
     form.append("audio", buildLargerBlob(3_000), "chunk.webm");
-    form.append("model", DEFAULT_SETTINGS.whisperModel);
     const res = await postTranscribe(form);
     // Synthetic WebM bytes can't be decoded by Whisper. The route must still
     // produce a structured error (400/422/500), not hang or crash the process.
@@ -262,7 +259,6 @@ async function groupTranscribe() {
 
   await test("T3 missing audio field → 422", async () => {
     const form = new FormData();
-    form.append("model", DEFAULT_SETTINGS.whisperModel);
     const res = await postTranscribe(form);
     assert(res.status === 422, `expected 422, got ${res.status}`);
   });
@@ -297,7 +293,6 @@ async function groupTranscribe() {
   await test("T7 large audio blob returns within 30s", async () => {
     const form = new FormData();
     form.append("audio", buildLargerBlob(5_000_000), "chunk.webm"); // ~5MB
-    form.append("model", DEFAULT_SETTINGS.whisperModel);
     const started = Date.now();
     const res = await postTranscribe(form);
     const elapsed = Date.now() - started;
@@ -398,7 +393,6 @@ async function groupSuggestions() {
     const res = await postSuggestions({
       previousSuggestions: [],
       suggestionPrompt: DEFAULT_SETTINGS.suggestionPrompt,
-      chatModel: DEFAULT_SETTINGS.chatModel,
     });
     assert(
       res.status === 422 || res.status === 400,
@@ -419,7 +413,6 @@ async function groupSuggestions() {
       transcript: medium,
       previousSuggestions: seeded,
       suggestionPrompt: DEFAULT_SETTINGS.suggestionPrompt,
-      chatModel: DEFAULT_SETTINGS.chatModel,
     });
     const data = (await res.json()) as SuggestionApiResponse;
     const seededPreviews = new Set(seeded.map((s) => s.preview.toLowerCase()));
@@ -438,7 +431,6 @@ async function groupSuggestions() {
       transcript: medium,
       previousSuggestions: [],
       suggestionPrompt: customPrompt,
-      chatModel: DEFAULT_SETTINGS.chatModel,
     });
     assert(res.status === 200, `expected 200, got ${res.status}`);
     const data = (await res.json()) as SuggestionApiResponse;
@@ -502,7 +494,6 @@ async function groupSuggestions() {
       transcript: medium,
       previousSuggestions: [],
       suggestionPrompt: badPrompt,
-      chatModel: DEFAULT_SETTINGS.chatModel,
     });
     // Could succeed via retry or fail cleanly. Must not be a raw crash.
     assert(
@@ -668,20 +659,12 @@ async function groupConfig() {
 
   await test("CFG1 DEFAULT_SETTINGS matches CLAUDE.md", async () => {
     assert(
-      DEFAULT_SETTINGS.chatModel === "openai/gpt-oss-120b",
-      `chatModel=${DEFAULT_SETTINGS.chatModel}`
-    );
-    assert(
       DEFAULT_SETTINGS.contextWindowChunks === 8,
       `contextWindowChunks=${DEFAULT_SETTINGS.contextWindowChunks}`
     );
     assert(
       DEFAULT_SETTINGS.refreshIntervalSec === 30,
       `refreshIntervalSec=${DEFAULT_SETTINGS.refreshIntervalSec}`
-    );
-    assert(
-      DEFAULT_SETTINGS.whisperModel === "whisper-large-v3",
-      `whisperModel=${DEFAULT_SETTINGS.whisperModel}`
     );
   });
 
@@ -724,7 +707,6 @@ async function groupErrors() {
           "[00:00:30] We are reviewing three vendors in Q3 for our data stack.",
         previousSuggestions: [],
         suggestionPrompt: DEFAULT_SETTINGS.suggestionPrompt,
-        chatModel: "does-not-exist/bogus-model-9000",
       });
       assert(res.status >= 400 && res.status < 600, `status=${res.status}`);
       const body = await res.text();
@@ -739,9 +721,7 @@ async function groupErrors() {
     async () => {
       const started = Date.now();
       const res = await postChat(
-        chatPayload([{ role: "user", content: "hi" }], {
-          chatModel: "does-not-exist/bogus-model-9000",
-        })
+        chatPayload([{ role: "user", content: "hi" }])
       );
       const elapsed = Date.now() - started;
       // Either we get 4xx/5xx, or a stream with an error token — not a hang.

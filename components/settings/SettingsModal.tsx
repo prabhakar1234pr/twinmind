@@ -233,8 +233,8 @@ export function SettingsModal({ open, onClose }: Props) {
               />
               <SliderField
                 label="Expanded answer context window"
-                hint="Last N transcript chunks used when answering a clicked suggestion"
-                min={5}
+                hint="0 = full transcript (assignment mode). Otherwise use last N chunks."
+                min={0}
                 max={60}
                 step={5}
                 value={s.expansionContextWindowChunks}

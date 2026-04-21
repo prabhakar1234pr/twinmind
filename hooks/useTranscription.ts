@@ -52,7 +52,7 @@ export function useTranscription(): UseTranscriptionResult {
           continue;
         }
 
-        const { apiKey, whisperModel } = useSettingsStore.getState();
+        const { apiKey } = useSettingsStore.getState();
         if (!apiKey) {
           setError("No API key set. Open Settings to add your Groq key.");
           continue;
@@ -63,7 +63,6 @@ export function useTranscription(): UseTranscriptionResult {
           type: job.blob.type || "audio/webm",
         });
         form.append("audio", file);
-        form.append("model", whisperModel);
 
         try {
           const res = await fetch("/api/transcribe", {

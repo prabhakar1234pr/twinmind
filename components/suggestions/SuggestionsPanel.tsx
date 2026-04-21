@@ -4,7 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useChat } from "@/hooks/useChat";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { fillTemplate } from "@/lib/prompts";
-import { buildChatTranscript } from "@/lib/session";
+import { buildChatTranscript, buildChatTranscriptFromWindow } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -24,6 +24,9 @@ export function SuggestionsPanel() {
   const activeSuggestion = useSessionStore((s) => s.activeSuggestion);
   const setActiveSuggestion = useSessionStore((s) => s.setActiveSuggestion);
   const expansionPrompt = useSettingsStore((s) => s.expansionPrompt);
+  const expansionContextWindowChunks = useSettingsStore(
+    (s) => s.expansionContextWindowChunks
+  );
 
   const { refreshNow } = useSuggestions();
   const { send } = useChat();
@@ -31,11 +34,15 @@ export function SuggestionsPanel() {
   const handleSelect = async (s: Suggestion) => {
     setActiveSuggestion(s);
     const currentChunks = useSessionStore.getState().transcriptChunks;
+    const expansionTranscript =
+      expansionContextWindowChunks <= 0
+        ? buildChatTranscript(currentChunks)
+        : buildChatTranscriptFromWindow(currentChunks, expansionContextWindowChunks);
     const content = fillTemplate(expansionPrompt, {
       suggestionType: s.type,
       suggestionPreview: s.preview,
       suggestionFullContext: s.fullContext,
-      transcript: buildChatTranscript(currentChunks),
+      transcript: expansionTranscript,
     });
     await send({
       content: s.preview,
