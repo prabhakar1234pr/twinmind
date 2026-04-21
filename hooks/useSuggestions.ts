@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
+import {
+  fetchWithTimeout,
+  isLikelyTransientNetworkError,
+  isTransientStatus,
+  parseApiErrorMessage,
+  sleep,
+} from "@/lib/http";
 import { buildSuggestionTranscript } from "@/lib/session";
 import { uid } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
@@ -19,6 +26,9 @@ interface UseSuggestionsResult {
 
 const RATE_LIMIT_BACKOFF_MS = 60_000;
 const MANUAL_REFRESH_TRANSCRIPT_WAIT_MS = 4_000;
+const SUGGESTIONS_TIMEOUT_MS = 22_000;
+const TRANSIENT_RETRY_DELAY_MS = 1_250;
+const MAX_TRANSIENT_ATTEMPTS = 2;
 
 export function useSuggestions(): UseSuggestionsResult {
   const lastBatchAtRef = useRef<number>(0);
@@ -72,56 +82,67 @@ export function useSuggestions(): UseSuggestionsResult {
         suggestionPrompt,
       };
 
-      const res = await fetch("/api/suggestions", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          [API_KEY_HEADER]: apiKey,
-        },
-        body: JSON.stringify(payload),
-      });
+      for (let attempt = 1; attempt <= MAX_TRANSIENT_ATTEMPTS; attempt += 1) {
+        try {
+          const res = await fetchWithTimeout("/api/suggestions", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              [API_KEY_HEADER]: apiKey,
+            },
+            body: JSON.stringify(payload),
+            timeoutMs: SUGGESTIONS_TIMEOUT_MS,
+          });
 
-      if (!res.ok) {
-        const raw = await res.text();
-        if (res.status === 429) {
-          backoffUntilRef.current = Date.now() + RATE_LIMIT_BACKOFF_MS;
-          setSuggestionError(
-            "Rate limit reached. Pausing suggestions for 60 seconds."
-          );
-        } else if (res.status === 422) {
-          setSuggestionError("Not enough transcript yet — keep recording.");
-        } else if (res.status === 401) {
-          setSuggestionError("Groq rejected the API key. Check Settings.");
-        } else if (res.status >= 500) {
-          setSuggestionError(
-            "Suggestion generation failed. Click Refresh to retry."
-          );
-        } else {
-          setSuggestionError(raw.slice(0, 240) || `HTTP ${res.status}`);
+          if (!res.ok) {
+            const msg = await parseApiErrorMessage(res, "Suggestion request failed.");
+            if (res.status === 429) {
+              backoffUntilRef.current = Date.now() + RATE_LIMIT_BACKOFF_MS;
+              setSuggestionError(`HTTP ${res.status}: ${msg.slice(0, 220)}`);
+              return;
+            }
+            if (
+              isTransientStatus(res.status) &&
+              attempt < MAX_TRANSIENT_ATTEMPTS
+            ) {
+              await sleep(TRANSIENT_RETRY_DELAY_MS);
+              continue;
+            }
+            setSuggestionError(`HTTP ${res.status}: ${msg.slice(0, 220)}`);
+            return;
+          }
+
+          const data = (await res.json()) as SuggestionsApiResponse;
+          const now = Date.now();
+          const batch: SuggestionBatch = {
+            id: uid("b-"),
+            timestamp: now,
+            transcriptSnapshot: transcript,
+            suggestions: data.suggestions.map((s) => ({
+              id: uid("s-"),
+              timestamp: now,
+              ...s,
+            })),
+          };
+
+          addSuggestionBatch(batch);
+          lastBatchAtRef.current = now;
+          setLastSuggestionLatencyMs(Date.now() - t0);
+          return;
+        } catch (err) {
+          if (
+            isLikelyTransientNetworkError(err) &&
+            attempt < MAX_TRANSIENT_ATTEMPTS
+          ) {
+            await sleep(TRANSIENT_RETRY_DELAY_MS);
+            continue;
+          }
+          const msg =
+            err instanceof Error ? err.message : "Failed to fetch suggestions.";
+          setSuggestionError(msg);
+          return;
         }
-        return;
       }
-
-      const data = (await res.json()) as SuggestionsApiResponse;
-      const now = Date.now();
-      const batch: SuggestionBatch = {
-        id: uid("b-"),
-        timestamp: now,
-        transcriptSnapshot: transcript,
-        suggestions: data.suggestions.map((s) => ({
-          id: uid("s-"),
-          timestamp: now,
-          ...s,
-        })),
-      };
-
-      addSuggestionBatch(batch);
-      lastBatchAtRef.current = now;
-      setLastSuggestionLatencyMs(Date.now() - t0);
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to fetch suggestions.";
-      setSuggestionError(`Connection issue: ${msg}. Retrying shortly.`);
     } finally {
       inFlightRef.current = false;
       setGeneratingSuggestions(false);

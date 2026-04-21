@@ -2,6 +2,13 @@
 
 import { useCallback, useRef, useState } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
+import {
+  fetchWithTimeout,
+  isLikelyTransientNetworkError,
+  isTransientStatus,
+  parseApiErrorMessage,
+  sleep,
+} from "@/lib/http";
 import { uid } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -15,6 +22,8 @@ interface UseTranscriptionResult {
 
 const MIN_BLOB_BYTES = 2_000;
 const RATE_LIMIT_RETRY_MS = 10_000;
+const TRANSCRIBE_TIMEOUT_MS = 30_000;
+const TRANSIENT_RETRY_MS = 2_000;
 
 interface Job {
   blob: Blob;
@@ -64,21 +73,38 @@ export function useTranscription(): UseTranscriptionResult {
         });
         form.append("audio", file);
 
+        const retryJob = async (delayMs: number, message: string) => {
+          if (job.attempts >= 1) return false;
+          queueRef.current.unshift({ ...job, attempts: job.attempts + 1 });
+          setQueueSize(queueRef.current.length);
+          setError(message);
+          await sleep(delayMs);
+          return true;
+        };
+
         try {
-          const res = await fetch("/api/transcribe", {
+          const res = await fetchWithTimeout("/api/transcribe", {
             method: "POST",
             headers: { [API_KEY_HEADER]: apiKey },
             body: form,
+            timeoutMs: TRANSCRIBE_TIMEOUT_MS,
           });
 
           if (!res.ok) {
-            const msg = await res.text();
-            if (res.status === 429 && job.attempts < 1) {
-              // Re-enqueue at the front and wait before trying again.
-              queueRef.current.unshift({ ...job, attempts: job.attempts + 1 });
-              setQueueSize(queueRef.current.length);
-              setError("Whisper rate limit. Retrying in 10 seconds…");
-              await new Promise((r) => setTimeout(r, RATE_LIMIT_RETRY_MS));
+            const msg = await parseApiErrorMessage(
+              res,
+              "Transcription request failed."
+            );
+            if (res.status === 429 && (await retryJob(RATE_LIMIT_RETRY_MS, `HTTP ${res.status}: ${msg.slice(0, 180)}`))) {
+              continue;
+            }
+            if (
+              isTransientStatus(res.status) &&
+              (await retryJob(
+                TRANSIENT_RETRY_MS,
+                `HTTP ${res.status}: ${msg.slice(0, 180)}`
+              ))
+            ) {
               continue;
             }
             if (res.status === 422) {
@@ -86,7 +112,7 @@ export function useTranscription(): UseTranscriptionResult {
               console.log(`[useTranscription] server rejected (422): ${msg.slice(0, 200)}`);
               continue;
             }
-            setError(`Transcription failed: ${msg.slice(0, 160)}`);
+            setError(`HTTP ${res.status}: ${msg.slice(0, 180)}`);
             continue;
           }
 
@@ -109,6 +135,15 @@ export function useTranscription(): UseTranscriptionResult {
           });
           setError(null);
         } catch (err) {
+          if (
+            isLikelyTransientNetworkError(err) &&
+            (await retryJob(
+              TRANSIENT_RETRY_MS,
+              err instanceof Error ? err.message : "Network error while transcribing."
+            ))
+          ) {
+            continue;
+          }
           const msg =
             err instanceof Error ? err.message : "Network error while transcribing.";
           // Expected benign errors from Whisper on sub-threshold audio.

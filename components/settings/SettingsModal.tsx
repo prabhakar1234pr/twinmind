@@ -3,6 +3,7 @@
 import { CheckCircle2, Eye, EyeOff, Loader2, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
+import { fetchWithTimeout, parseApiErrorMessage } from "@/lib/http";
 import {
   ASSIGNMENT_CHAT_MODEL,
   ASSIGNMENT_WHISPER_MODEL,
@@ -49,27 +50,22 @@ export function SettingsModal({ open, onClose }: Props) {
     setTestState("loading");
     setTestMessage("");
     try {
-      const res = await fetch("/api/key-test", {
+      const res = await fetchWithTimeout("/api/key-test", {
         method: "POST",
         headers: {
           [API_KEY_HEADER]: s.apiKey.trim(),
         },
+        timeoutMs: 10_000,
       });
-      let payload: { error?: string; message?: string; ok?: boolean } = {};
-      try {
-        payload = (await res.json()) as { error?: string; message?: string; ok?: boolean };
-      } catch {
-        // non-JSON response; fall back to generic status message
-      }
 
       if (!res.ok) {
+        const msg = await parseApiErrorMessage(res, "Request failed");
         setTestState("fail");
-        setTestMessage(
-          `HTTP ${res.status}: ${(payload.error || payload.message || "Request failed").slice(0, 220)}`
-        );
+        setTestMessage(`HTTP ${res.status}: ${msg.slice(0, 220)}`);
         return;
       }
 
+      const payload = (await res.json()) as { message?: string };
       setTestState("ok");
       setTestMessage(payload.message || "API key valid.");
     } catch (err) {
