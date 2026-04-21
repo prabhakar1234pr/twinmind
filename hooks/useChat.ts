@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
 import {
   fetchWithTimeout,
@@ -30,7 +30,38 @@ const CHAT_TIMEOUT_MS = 35_000;
 const TRANSIENT_RETRY_DELAY_MS = 1_250;
 const MAX_TRANSIENT_ATTEMPTS = 2;
 
+interface SseEvent {
+  event: string;
+  data: string;
+}
+
+function extractSseEvents(buffer: string): { events: SseEvent[]; rest: string } {
+  const events: SseEvent[] = [];
+  let working = buffer;
+  let boundary = working.indexOf("\n\n");
+  while (boundary >= 0) {
+    const raw = working.slice(0, boundary).trim();
+    working = working.slice(boundary + 2);
+    if (raw) {
+      const lines = raw.split("\n");
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          event = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trim());
+        }
+      }
+      events.push({ event, data: dataLines.join("\n") });
+    }
+    boundary = working.indexOf("\n\n");
+  }
+  return { events, rest: working };
+}
+
 export function useChat(): UseChatResult {
+  const validatedKeyRef = useRef<string | null>(null);
   const send = useCallback(
     async ({ content, linkedSuggestionId, displayContent, systemPromptOverride }: SendArgs) => {
       const trimmed = content.trim();
@@ -68,6 +99,41 @@ export function useChat(): UseChatResult {
         };
         addChatMessage(err);
         return;
+      }
+
+      if (validatedKeyRef.current !== apiKey) {
+        try {
+          const keyRes = await fetchWithTimeout("/api/key-test", {
+            method: "POST",
+            headers: { [API_KEY_HEADER]: apiKey },
+            timeoutMs: 10_000,
+          });
+          if (!keyRes.ok) {
+            const keyMsg = await parseApiErrorMessage(
+              keyRes,
+              "API key test failed."
+            );
+            addChatMessage({
+              id: uid("m-"),
+              role: "assistant",
+              content: `HTTP ${keyRes.status}: ${keyMsg}`,
+              timestamp: Date.now(),
+            });
+            validatedKeyRef.current = null;
+            return;
+          }
+          validatedKeyRef.current = apiKey;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "API key test failed.";
+          addChatMessage({
+            id: uid("m-"),
+            role: "assistant",
+            content: msg,
+            timestamp: Date.now(),
+          });
+          validatedKeyRef.current = null;
+          return;
+        }
       }
 
       const assistantId = uid("m-");
@@ -129,22 +195,65 @@ export function useChat(): UseChatResult {
             const decoder = new TextDecoder();
             let receivedAny = false;
             try {
+              let sseBuffer = "";
+              let doneSeen = false;
+              let errorSeen = false;
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                const chunk = decoder.decode(value, { stream: true });
-                if (chunk) {
-                  if (!receivedAny) {
-                    setLastChatFirstTokenMs(Date.now() - t0);
+                if (!value) continue;
+                sseBuffer += decoder.decode(value, { stream: true });
+                const { events, rest } = extractSseEvents(sseBuffer);
+                sseBuffer = rest;
+
+                for (const evt of events) {
+                  if (evt.event === "token") {
+                    let text = "";
+                    try {
+                      const parsed = JSON.parse(evt.data) as { text?: unknown };
+                      if (typeof parsed.text === "string") text = parsed.text;
+                    } catch {
+                      // keep text empty; malformed event payload
+                    }
+                    if (!text) continue;
+                    if (!receivedAny) {
+                      setLastChatFirstTokenMs(Date.now() - t0);
+                    }
+                    appendToMessage(assistantId, text);
+                    receivedAny = true;
+                  } else if (evt.event === "error") {
+                    let status: number | null = null;
+                    let message = "Unknown stream error.";
+                    try {
+                      const parsed = JSON.parse(evt.data) as {
+                        status?: unknown;
+                        message?: unknown;
+                      };
+                      if (typeof parsed.status === "number") status = parsed.status;
+                      if (typeof parsed.message === "string" && parsed.message) {
+                        message = parsed.message;
+                      }
+                    } catch {
+                      if (evt.data.trim()) message = evt.data.trim();
+                    }
+                    appendToMessage(
+                      assistantId,
+                      `\n\nHTTP ${status ?? 500}: ${message}`
+                    );
+                    errorSeen = true;
+                    doneSeen = true;
+                    break;
+                  } else if (evt.event === "done") {
+                    doneSeen = true;
+                    break;
                   }
-                  appendToMessage(assistantId, chunk);
-                  receivedAny = true;
                 }
+                if (doneSeen) break;
               }
-              if (!receivedAny) {
+              if (!receivedAny && !errorSeen) {
                 appendToMessage(
                   assistantId,
-                  "\n\nHTTP 200: Empty response stream (no tokens received)."
+                  "\n\nHTTP 502: Empty SSE stream (no token events received)."
                 );
               }
             } catch (streamErr) {

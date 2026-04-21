@@ -9,6 +9,10 @@ import type { ChatApiRequest } from "@/types";
 export const runtime = "edge";
 export const maxDuration = 30;
 
+function sseEvent(event: string, payload: Record<string, unknown>): string {
+  return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = getApiKeyFromRequest(req);
   if (!apiKey) return apiError(401, "Missing or invalid Groq API key.");
@@ -44,7 +48,59 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return result.toTextStreamResponse();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          let emittedToken = false;
+          for await (const chunk of result.textStream) {
+            if (!chunk) continue;
+            emittedToken = true;
+            controller.enqueue(
+              encoder.encode(sseEvent("token", { text: chunk }))
+            );
+          }
+          if (!emittedToken) {
+            controller.enqueue(
+              encoder.encode(
+                sseEvent("error", {
+                  status: 502,
+                  message: "Upstream returned an empty token stream.",
+                })
+              )
+            );
+            return;
+          }
+          controller.enqueue(encoder.encode(sseEvent("done", { ok: true })));
+        } catch (streamErr) {
+          const msg =
+            streamErr instanceof Error
+              ? streamErr.message
+              : "Chat stream failed.";
+          const lower = msg.toLowerCase();
+          const status =
+            msg.includes("429") ||
+            lower.includes("rate_limit") ||
+            lower.includes("rate limit")
+              ? 429
+              : 500;
+          controller.enqueue(
+            encoder.encode(sseEvent("error", { status, message: msg }))
+          );
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        connection: "keep-alive",
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Chat call failed.";
     if (
