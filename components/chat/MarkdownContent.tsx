@@ -1,189 +1,63 @@
 "use client";
 
-import { Fragment } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Props {
   content: string;
   streaming?: boolean;
 }
 
-type Block =
-  | { kind: "h1" | "h2" | "h3"; text: string }
-  | { kind: "ul"; items: string[] }
-  | { kind: "ol"; items: string[] }
-  | { kind: "blockquote"; text: string }
-  | { kind: "p"; text: string }
-  | { kind: "hr" };
-
-function parseBlocks(raw: string): Block[] {
-  const lines = raw.split("\n");
-  const blocks: Block[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Blank line — skip
-    if (line.trim() === "") { i++; continue; }
-
-    // Headings
-    if (line.startsWith("### ")) {
-      blocks.push({ kind: "h3", text: line.slice(4).trim() });
-      i++; continue;
-    }
-    if (line.startsWith("## ")) {
-      blocks.push({ kind: "h2", text: line.slice(3).trim() });
-      i++; continue;
-    }
-    if (line.startsWith("# ")) {
-      blocks.push({ kind: "h1", text: line.slice(2).trim() });
-      i++; continue;
-    }
-
-    // HR
-    if (/^[-*]{3,}$/.test(line.trim())) {
-      blocks.push({ kind: "hr" });
-      i++; continue;
-    }
-
-    // Blockquote
-    if (line.startsWith("> ") || line === ">") {
-      const lines2: string[] = [];
-      while (i < lines.length && (lines[i].startsWith("> ") || lines[i] === ">")) {
-        lines2.push(lines[i].replace(/^>\s?/, ""));
-        i++;
-      }
-      blocks.push({ kind: "blockquote", text: lines2.join(" ") });
-      continue;
-    }
-
-    // Unordered list
-    if (/^(\s*[-*+] )/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^(\s*[-*+] )/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*[-*+] /, "").trim());
-        i++;
-      }
-      blocks.push({ kind: "ul", items });
-      continue;
-    }
-
-    // Ordered list
-    if (/^\d+\.\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s/, "").trim());
-        i++;
-      }
-      blocks.push({ kind: "ol", items });
-      continue;
-    }
-
-    // Paragraph — collect consecutive non-special lines
-    const para: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      !lines[i].startsWith("#") &&
-      !/^(\s*[-*+] )/.test(lines[i]) &&
-      !/^\d+\.\s/.test(lines[i]) &&
-      !/^[-*]{3,}$/.test(lines[i].trim())
-    ) {
-      para.push(lines[i]);
-      i++;
-    }
-    if (para.length) blocks.push({ kind: "p", text: para.join(" ") });
-  }
-
-  return blocks;
-}
-
-// Inline: bold, italic, inline code
-function renderInline(text: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  // Matches: **bold**, *italic*, `code`
-  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    if (m[2] !== undefined) parts.push(<strong key={m.index} className="font-semibold">{m[2]}</strong>);
-    else if (m[3] !== undefined) parts.push(<em key={m.index} className="italic">{m[3]}</em>);
-    else if (m[4] !== undefined) parts.push(<code key={m.index} className="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.8em]">{m[4]}</code>);
-    last = m.index + m[0].length;
-  }
-
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
 export function MarkdownContent({ content, streaming }: Props) {
-  const blocks = parseBlocks(content);
-
   return (
-    <div className="space-y-2 text-sm leading-relaxed">
-      {blocks.map((block, bi) => {
-        const isLast = bi === blocks.length - 1;
-        const cursor = streaming && isLast
-          ? <span className="ml-0.5 inline-block h-3 w-1 translate-y-0.5 animate-pulse bg-current align-baseline" />
-          : null;
+    <div className="min-w-0 max-w-full space-y-2 overflow-hidden text-sm leading-relaxed break-words [overflow-wrap:anywhere] [&_*]:max-w-full">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: (props) => <h1 className="mt-1 text-base font-bold leading-snug" {...props} />,
+          h2: (props) => <h2 className="mt-1 text-sm font-bold leading-snug" {...props} />,
+          h3: (props) => (
+            <h3 className="mt-0.5 text-sm font-semibold text-foreground/80 leading-snug" {...props} />
+          ),
+          p: (props) => <p className="leading-relaxed break-words [overflow-wrap:anywhere]" {...props} />,
+          ul: (props) => <ul className="list-disc space-y-1.5 pl-5" {...props} />,
+          ol: (props) => <ol className="list-decimal space-y-1.5 pl-5" {...props} />,
+          blockquote: (props) => (
+            <blockquote className="border-l-2 border-current pl-3 opacity-75 italic" {...props} />
+          ),
+          code: ({ className, children, ...props }) => (
+            <code
+              className={`rounded bg-black/10 px-1 py-0.5 font-mono text-[0.8em] whitespace-pre-wrap break-all [overflow-wrap:anywhere] ${className ?? ""}`.trim()}
+              {...props}
+            >
+              {children}
+            </code>
+          ),
+          table: (props) => (
+            <div className="my-2 w-full overflow-hidden">
+              <table className="w-full table-fixed border-collapse text-xs" {...props} />
+            </div>
+          ),
+          th: (props) => (
+            <th
+              className="border border-black/10 bg-black/5 px-2 py-1 text-left font-semibold break-words [overflow-wrap:anywhere]"
+              {...props}
+            />
+          ),
+          td: (props) => (
+            <td
+              className="border border-black/10 px-2 py-1 align-top break-words [overflow-wrap:anywhere]"
+              {...props}
+            />
+          ),
+          a: (props) => <a className="underline" target="_blank" rel="noreferrer" {...props} />,
+          hr: (props) => <hr className="border-current opacity-20" {...props} />,
+        }}
+      >
+        {content || ""}
+      </ReactMarkdown>
 
-        switch (block.kind) {
-          case "h1":
-            return <h1 key={bi} className="mt-1 text-base font-bold leading-snug">{renderInline(block.text)}{cursor}</h1>;
-          case "h2":
-            return <h2 key={bi} className="mt-1 text-sm font-bold leading-snug">{renderInline(block.text)}{cursor}</h2>;
-          case "h3":
-            return <h3 key={bi} className="mt-0.5 text-sm font-semibold text-foreground/80 leading-snug">{renderInline(block.text)}{cursor}</h3>;
-          case "hr":
-            return <hr key={bi} className="border-current opacity-20" />;
-          case "blockquote":
-            return (
-              <blockquote key={bi} className="border-l-2 border-current pl-3 opacity-75 italic">
-                <span>{renderInline(block.text)}{cursor}</span>
-              </blockquote>
-            );
-          case "ul":
-            return (
-              <ul key={bi} className="space-y-1.5 pl-3">
-                {block.items.map((item, ii) => {
-                  const itemIsLast = isLast && ii === block.items.length - 1;
-                  return (
-                    <li key={ii} className="flex gap-2">
-                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
-                      <span>{renderInline(item)}{itemIsLast && cursor}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-          case "ol":
-            return (
-              <ol key={bi} className="space-y-1.5 pl-3">
-                {block.items.map((item, ii) => {
-                  const itemIsLast = isLast && ii === block.items.length - 1;
-                  return (
-                    <li key={ii} className="flex gap-2">
-                      <span className="shrink-0 font-semibold opacity-70">{ii + 1}.</span>
-                      <span>{renderInline(item)}{itemIsLast && cursor}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            );
-          case "p":
-          default:
-            return (
-              <p key={bi}>
-                {renderInline(block.text)}{cursor}
-              </p>
-            );
-        }
-      })}
-
-      {/* Show cursor even when content is empty (initial streaming state) */}
-      {streaming && blocks.length === 0 && (
+      {streaming && (
         <span className="inline-block h-3 w-1 translate-y-0.5 animate-pulse bg-current align-baseline" />
       )}
     </div>

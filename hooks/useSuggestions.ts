@@ -10,6 +10,7 @@ import {
   parseApiErrorMessage,
   sleep,
 } from "@/lib/http";
+import { createLogger } from "@/lib/logger";
 import { buildSuggestionTranscript } from "@/lib/session";
 import { uid } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
@@ -30,6 +31,7 @@ const MANUAL_REFRESH_TRANSCRIPT_WAIT_MS = 4_000;
 const SUGGESTIONS_TIMEOUT_MS = 22_000;
 const TRANSIENT_RETRY_DELAY_MS = 1_250;
 const MAX_TRANSIENT_ATTEMPTS = 2;
+const log = createLogger("hook:useSuggestions");
 
 export function useSuggestions(): UseSuggestionsResult {
   const lastBatchAtRef = useRef<number>(0);
@@ -54,6 +56,10 @@ export function useSuggestions(): UseSuggestionsResult {
 
     const validation = await ensureValidApiKey();
     if (!validation.ok) {
+      log.warn("api key validation failed before suggestions", {
+        status: validation.status,
+        message: validation.message,
+      });
       setSuggestionError(validation.message);
       return;
     }
@@ -86,6 +92,7 @@ export function useSuggestions(): UseSuggestionsResult {
 
       for (let attempt = 1; attempt <= MAX_TRANSIENT_ATTEMPTS; attempt += 1) {
         try {
+          log.debug("suggestions request attempt", { attempt });
           const res = await fetchWithTimeout("/api/suggestions", {
             method: "POST",
             headers: {
@@ -98,6 +105,11 @@ export function useSuggestions(): UseSuggestionsResult {
 
           if (!res.ok) {
             const msg = await parseApiErrorMessage(res, "Suggestion request failed.");
+            log.warn("suggestions request returned non-ok", {
+              status: res.status,
+              attempt,
+              message: msg,
+            });
             if (res.status === 429) {
               backoffUntilRef.current = Date.now() + RATE_LIMIT_BACKOFF_MS;
               setSuggestionError(`HTTP ${res.status}: ${msg.slice(0, 220)}`);
@@ -130,17 +142,26 @@ export function useSuggestions(): UseSuggestionsResult {
           addSuggestionBatch(batch);
           lastBatchAtRef.current = now;
           setLastSuggestionLatencyMs(Date.now() - t0);
+          log.info("suggestions generated successfully", {
+            count: batch.suggestions.length,
+            elapsedMs: Date.now() - t0,
+          });
           return;
         } catch (err) {
           if (
             isLikelyTransientNetworkError(err) &&
             attempt < MAX_TRANSIENT_ATTEMPTS
           ) {
+            log.warn("transient network error while generating suggestions", {
+              attempt,
+              message: err instanceof Error ? err.message : String(err),
+            });
             await sleep(TRANSIENT_RETRY_DELAY_MS);
             continue;
           }
           const msg =
             err instanceof Error ? err.message : "Failed to fetch suggestions.";
+          log.error("suggestions request failed", { message: msg, attempt });
           setSuggestionError(msg);
           return;
         }

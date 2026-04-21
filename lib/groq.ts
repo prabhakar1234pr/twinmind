@@ -73,11 +73,16 @@ export function isRateLimitError(err: unknown): boolean {
 export function getErrorStatus(err: unknown): number {
   if (typeof err === "object" && err !== null) {
     const anyErr = err as {
+      statusCode?: unknown;
       status?: unknown;
       response?: { status?: unknown };
       code?: unknown;
       message?: unknown;
     };
+    const fromStatusCode = Number(anyErr.statusCode);
+    if (Number.isInteger(fromStatusCode) && fromStatusCode >= 400) {
+      return fromStatusCode;
+    }
     const fromStatus = Number(anyErr.status);
     if (Number.isInteger(fromStatus) && fromStatus >= 400) return fromStatus;
     const fromResponse = Number(anyErr.response?.status);

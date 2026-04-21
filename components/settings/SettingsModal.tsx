@@ -4,6 +4,7 @@ import { CheckCircle2, Eye, EyeOff, Loader2, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { API_KEY_HEADER } from "@/lib/groq";
 import { fetchWithTimeout, parseApiErrorMessage } from "@/lib/http";
+import { createLogger } from "@/lib/logger";
 import {
   ASSIGNMENT_CHAT_MODEL,
   ASSIGNMENT_WHISPER_MODEL,
@@ -14,6 +15,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 
 type TestState = "idle" | "loading" | "ok" | "fail";
 type Tab = "apiKey" | "prompts" | "behavior";
+const log = createLogger("component:SettingsModal");
 
 interface Props {
   open: boolean;
@@ -42,6 +44,7 @@ export function SettingsModal({ open, onClose }: Props) {
   if (!open) return null;
 
   const runTest = async () => {
+    log.info("manual key test requested");
     if (!s.apiKey.trim()) {
       setTestState("fail");
       setTestMessage("Enter a key first.");
@@ -66,6 +69,7 @@ export function SettingsModal({ open, onClose }: Props) {
       if (!res.ok) {
         const msg = await parseApiErrorMessage(res, "Request failed");
         const full = `HTTP ${res.status}: ${msg.slice(0, 220)}`;
+        log.warn("manual key test failed", { status: res.status, message: msg });
         s.setApiKeyValidation({
           status: "invalid",
           message: full,
@@ -78,6 +82,7 @@ export function SettingsModal({ open, onClose }: Props) {
 
       const payload = (await res.json()) as { message?: string };
       const successMsg = payload.message || "API key valid.";
+      log.info("manual key test succeeded");
       s.setApiKeyValidation({
         status: "valid",
         message: successMsg,
@@ -88,6 +93,7 @@ export function SettingsModal({ open, onClose }: Props) {
     } catch (err) {
       setTestState("fail");
       const msg = err instanceof Error ? err.message : "Unknown error";
+      log.error("manual key test threw error", { message: msg });
       s.setApiKeyValidation({
         status: "invalid",
         message: msg,

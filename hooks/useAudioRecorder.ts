@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createLogger } from "@/lib/logger";
 
 type OnChunk = (blob: Blob, durationSec: number) => void;
 
@@ -16,6 +17,8 @@ interface UseAudioRecorderResult {
   stop: () => void;
   flushChunk: () => void;
 }
+
+const log = createLogger("hook:useAudioRecorder");
 
 function pickMimeType(): string {
   const candidates = [
@@ -65,6 +68,7 @@ export function useAudioRecorder({
     const blob = new Blob(parts, { type: mimeRef.current || "audio/webm" });
     if (blob.size < 2_000) return;
     const durationSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    log.debug("finalized audio chunk", { sizeBytes: blob.size, durationSec });
     onChunk(blob, durationSec);
   }, [onChunk]);
 
@@ -76,15 +80,18 @@ export function useAudioRecorder({
 
   const start = useCallback(async () => {
     setError(null);
+    log.info("start recording requested");
     if (typeof window === "undefined") return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("Microphone not available in this browser.");
+      log.warn("microphone API not available");
       return;
     }
 
     const mime = pickMimeType();
     if (!mime) {
       setError("No supported audio MIME type found.");
+      log.warn("no supported audio mime type");
       return;
     }
     mimeRef.current = mime;
@@ -99,12 +106,17 @@ export function useAudioRecorder({
       });
       tracksRef.current = micStream.getTracks();
       streamRef.current = micStream;
+      log.info("microphone stream acquired", {
+        trackCount: tracksRef.current.length,
+        mimeType: mime,
+      });
     } catch (err) {
       const msg =
         err instanceof Error
           ? err.message
           : "Microphone permission was denied.";
       setError(msg);
+      log.error("failed to acquire microphone", { message: msg });
       return;
     }
 
@@ -140,9 +152,11 @@ export function useAudioRecorder({
     }, chunkIntervalMs);
 
     setIsRecording(true);
+    log.info("recording started");
   }, [chunkIntervalMs, finalizeChunk]);
 
   const stop = useCallback(() => {
+    log.info("stop recording requested");
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -155,17 +169,20 @@ export function useAudioRecorder({
     recorderRef.current = null;
     cleanupStream();
     setIsRecording(false);
+    log.info("recording stopped");
   }, [cleanupStream]);
 
   const flushChunk = useCallback(() => {
     const rec = recorderRef.current;
     if (rec && rec.state === "recording") {
+      log.debug("manual chunk flush requested");
       rec.stop();
     }
   }, []);
 
   useEffect(() => {
     return () => {
+      log.debug("audio recorder cleanup on unmount");
       if (intervalRef.current) clearInterval(intervalRef.current);
       stoppingFinalRef.current = true;
       if (recorderRef.current?.state === "recording") {

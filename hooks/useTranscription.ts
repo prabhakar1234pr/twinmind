@@ -9,6 +9,7 @@ import {
   parseApiErrorMessage,
   sleep,
 } from "@/lib/http";
+import { createLogger } from "@/lib/logger";
 import { uid } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -24,6 +25,7 @@ const MIN_BLOB_BYTES = 2_000;
 const RATE_LIMIT_RETRY_MS = 10_000;
 const TRANSCRIBE_TIMEOUT_MS = 30_000;
 const TRANSIENT_RETRY_MS = 2_000;
+const log = createLogger("hook:useTranscription");
 
 interface Job {
   blob: Blob;
@@ -46,6 +48,7 @@ export function useTranscription(): UseTranscriptionResult {
   const drain = useCallback(async () => {
     if (runningRef.current) return;
     runningRef.current = true;
+    log.debug("drain started", { queued: queueRef.current.length });
 
     try {
       while (queueRef.current.length > 0) {
@@ -57,12 +60,13 @@ export function useTranscription(): UseTranscriptionResult {
         // expected at record start / stop boundaries and aren't worth bothering
         // the user with.
         if (job.blob.size < MIN_BLOB_BYTES) {
-          console.log(`[useTranscription] dropping tiny blob (${job.blob.size}b)`);
+          log.debug("dropping tiny blob", { sizeBytes: job.blob.size });
           continue;
         }
 
         const { apiKey } = useSettingsStore.getState();
         if (!apiKey) {
+          log.warn("missing api key while transcribing");
           setError("No API key set. Open Settings to add your Groq key.");
           continue;
         }
@@ -78,11 +82,21 @@ export function useTranscription(): UseTranscriptionResult {
           queueRef.current.unshift({ ...job, attempts: job.attempts + 1 });
           setQueueSize(queueRef.current.length);
           setError(message);
+          log.warn("retrying transcription job", {
+            attempt: job.attempts + 1,
+            delayMs,
+            message,
+          });
           await sleep(delayMs);
           return true;
         };
 
         try {
+          log.debug("sending transcription request", {
+            sizeBytes: job.blob.size,
+            durationSec: job.durationSec,
+            attempt: job.attempts,
+          });
           const res = await fetchWithTimeout("/api/transcribe", {
             method: "POST",
             headers: { [API_KEY_HEADER]: apiKey },
@@ -95,6 +109,10 @@ export function useTranscription(): UseTranscriptionResult {
               res,
               "Transcription request failed."
             );
+            log.warn("transcription request returned non-ok", {
+              status: res.status,
+              message: msg,
+            });
             if (res.status === 429 && (await retryJob(RATE_LIMIT_RETRY_MS, `HTTP ${res.status}: ${msg.slice(0, 180)}`))) {
               continue;
             }
@@ -109,7 +127,7 @@ export function useTranscription(): UseTranscriptionResult {
             }
             if (res.status === 422) {
               // "audio too short" / "audio too short to transcribe" — log and drop.
-              console.log(`[useTranscription] server rejected (422): ${msg.slice(0, 200)}`);
+              log.debug("dropping blob after 422", { message: msg.slice(0, 200) });
               continue;
             }
             setError(`HTTP ${res.status}: ${msg.slice(0, 180)}`);
@@ -123,7 +141,7 @@ export function useTranscription(): UseTranscriptionResult {
             isLikelyHallucinatedTail(text) &&
             useSessionStore.getState().transcriptChunks.length > 0
           ) {
-            console.log(`[useTranscription] dropped likely hallucinated tail: "${text}"`);
+            log.debug("dropped likely hallucinated tail", { text });
             continue;
           }
 
@@ -134,6 +152,10 @@ export function useTranscription(): UseTranscriptionResult {
             durationSec: job.durationSec,
           });
           setError(null);
+          log.info("transcription chunk added", {
+            chars: text.length,
+            durationSec: job.durationSec,
+          });
         } catch (err) {
           if (
             isLikelyTransientNetworkError(err) &&
@@ -148,14 +170,16 @@ export function useTranscription(): UseTranscriptionResult {
             err instanceof Error ? err.message : "Network error while transcribing.";
           // Expected benign errors from Whisper on sub-threshold audio.
           if (/too short|audio_too_short|file too small/i.test(msg)) {
-            console.log(`[useTranscription] benign error dropped: ${msg}`);
+            log.debug("dropping benign transcription error", { message: msg });
             continue;
           }
+          log.error("transcription request failed", { message: msg });
           setError(msg);
         }
       }
     } finally {
       runningRef.current = false;
+      log.debug("drain finished");
     }
   }, []);
 
@@ -163,6 +187,11 @@ export function useTranscription(): UseTranscriptionResult {
     (blob: Blob, durationSec: number) => {
       queueRef.current.push({ blob, durationSec, attempts: 0 });
       setQueueSize(queueRef.current.length);
+      log.debug("enqueued audio chunk", {
+        queueSize: queueRef.current.length,
+        sizeBytes: blob.size,
+        durationSec,
+      });
       void drain();
     },
     [drain]

@@ -10,12 +10,14 @@ import {
   isJsonSchemaError,
   isRateLimitError,
 } from "@/lib/groq";
+import { createLogger } from "@/lib/logger";
 import { fillTemplate } from "@/lib/prompts";
 import { ASSIGNMENT_CHAT_MODEL } from "@/lib/settings";
 import type { Suggestion, SuggestionsApiRequest } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+const log = createLogger("api:suggestions");
 
 const SuggestionSchema = z.object({
   suggestions: z
@@ -67,20 +69,25 @@ async function generateSuggestions(
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
   const apiKey = getApiKeyFromRequest(req);
+  log.info("received suggestions request", { hasKey: apiKey.length > 0 });
 
   let body: SuggestionsApiRequest;
   try {
     body = (await req.json()) as SuggestionsApiRequest;
   } catch {
+    log.warn("invalid json body");
     return apiError(400, "Invalid JSON body.");
   }
 
   const { transcript, previousSuggestions, suggestionPrompt } = body;
   if (!transcript || transcript.trim().length < 10) {
+    log.warn("transcript too short", { length: transcript?.trim().length ?? 0 });
     return apiError(422, "Transcript too short to generate suggestions.");
   }
   if (!suggestionPrompt || typeof suggestionPrompt !== "string") {
+    log.warn("missing suggestionPrompt");
     return apiError(422, "Missing suggestionPrompt.");
   }
   const prompt = fillTemplate(suggestionPrompt, {
@@ -97,15 +104,18 @@ export async function POST(req: NextRequest) {
     } catch (firstErr) {
       if (isRateLimitError(firstErr)) throw firstErr;
       if (isJsonSchemaError(firstErr)) {
-        console.warn(
-          "[suggestions] retrying after parse failure:",
-          firstErr instanceof Error ? firstErr.message : firstErr
-        );
+        log.warn("retrying after schema/json parse failure", {
+          message: firstErr instanceof Error ? firstErr.message : String(firstErr),
+        });
         result = await generateSuggestions(groq, ASSIGNMENT_CHAT_MODEL, prompt, 2);
       } else {
         throw firstErr;
       }
     }
+    log.info("suggestions generated", {
+      elapsedMs: Date.now() - t0,
+      count: result.suggestions.length,
+    });
 
     return new Response(JSON.stringify(result), {
       status: 200,
@@ -114,7 +124,11 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Suggestion call failed.";
     const status = getErrorStatus(err);
-    console.error("[suggestions] error:", msg);
+    log.error("suggestions request failed", {
+      status,
+      message: msg,
+      elapsedMs: Date.now() - t0,
+    });
     return apiError(status, msg);
   }
 }
