@@ -49,31 +49,29 @@ export function SettingsModal({ open, onClose }: Props) {
     setTestState("loading");
     setTestMessage("");
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/key-test", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
           [API_KEY_HEADER]: s.apiKey.trim(),
         },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: "Reply with the single word: ok" }],
-          transcript: "",
-          systemPrompt: "You are a test. Reply with only: ok",
-        }),
       });
+      let payload: { error?: string; message?: string; ok?: boolean } = {};
+      try {
+        payload = (await res.json()) as { error?: string; message?: string; ok?: boolean };
+      } catch {
+        // non-JSON response; fall back to generic status message
+      }
+
       if (!res.ok) {
-        const txt = await res.text();
         setTestState("fail");
-        setTestMessage(txt.slice(0, 200));
+        setTestMessage(
+          `HTTP ${res.status}: ${(payload.error || payload.message || "Request failed").slice(0, 220)}`
+        );
         return;
       }
-      const reader = res.body?.getReader();
-      if (reader) {
-        await reader.read();
-        reader.cancel();
-      }
+
       setTestState("ok");
-      setTestMessage("Connection successful.");
+      setTestMessage(payload.message || "API key valid.");
     } catch (err) {
       setTestState("fail");
       setTestMessage(err instanceof Error ? err.message : "Unknown error");
